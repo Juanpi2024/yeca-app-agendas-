@@ -3,8 +3,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
+console.log("Iniciando aplicación Agendes Yeca 2025...");
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
+  console.error("No se encontró el elemento #root");
   throw new Error("Could not find root element to mount to");
 }
 
@@ -14,3 +17,5 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+console.log("Mounting App successful");

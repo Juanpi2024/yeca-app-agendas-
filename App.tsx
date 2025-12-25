@@ -16,16 +16,29 @@ const App: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      const data = await sheetService.getTransactions();
-      if (data.length > 0) {
-        setState({ transactions: data });
-      } else {
+      try {
+        const data = await sheetService.getTransactions();
+        if (data && data.length > 0) {
+          setState({ transactions: data });
+        } else {
+          const saved = localStorage.getItem('agenda_pro_data');
+          if (saved) setState(JSON.parse(saved));
+        }
+      } catch (error) {
+        console.error("Error loading data:", error);
         const saved = localStorage.getItem('agenda_pro_data');
         if (saved) setState(JSON.parse(saved));
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     loadData();
+
+    // Safety timeout: if after 10s it's still loading, force stop
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 10000);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -122,6 +135,7 @@ const App: React.FC = () => {
       {/* Floating Action Button */}
       <button
         onClick={() => setIsFormOpen(true)}
+        aria-label="Agregar nueva transacción"
         className="fixed bottom-6 right-6 w-14 h-14 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-xl shadow-rose-200 flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-20"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-8 h-8">
@@ -135,7 +149,7 @@ const App: React.FC = () => {
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <h2 className="text-xl font-bold text-slate-800">Nueva Transacción</h2>
-              <button onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setIsFormOpen(false)} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
