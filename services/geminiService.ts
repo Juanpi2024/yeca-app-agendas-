@@ -27,18 +27,26 @@ export const getBusinessInsights = async (transactions: Transaction[], agendasIn
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash',
-      contents: `Eres un experto contador y consultor de negocios para el emprendimiento de papelería creativa "Agendes Yeca 2025". 
-      Analiza los siguientes datos financieros y la situación actual:
+      contents: `Eres un experto consultor de negocios especializado en productos hechos a mano de ALTO VALOR para "Agendes Yeca 2025".
       
+      CONTEXTO DEL MERCADO:
+      - Las agendas de Yessica son productos premium.
+      - El precio de mercado para estas agendas artesanales es de entre $13.000 y $18.000 CLP.
+      - Yessica NO compite por precio bajo, sino por calidad, diseño y exclusividad.
+      
+      SITUACIÓN ACTUAL:
       ${agendasContext}
       
-      DATOS DE TRANSACCIONES:
+      DATOS DE TRANSACCIONES (COSTOS Y VENTAS):
       ${summary}
       
-      Proporciona 3 consejos accionables, breves y motivadores en español. 
-      Si hay agendas en confección, ayuda a Yessica a calcular el retorno de inversión potencial o sugiere un precio de venta para cubrir los gastos de materiales registrados.
+      TU TAREA:
+      Proporciona 3 consejos estratégicos de negocio.
+      1. Si hay agendas en confección, calcula la UTILIDAD REAL esperada vendiéndolas a precios de mercado ($13k-$18k) comparado con los costos de materiales registrados.
+      2. Da consejos sobre cómo justificar un precio de $18.000 (ej. personalización, empaque premium).
+      3. Sé motivador, directo y profesional. Máximo 150 palabras.
       
-      Formato de respuesta: Texto directo, sin negritas innecesarias, máximo 150 palabras.`,
+      IMPORTANTE: No sugieras precios bajos. Enfócate en maximizar la rentabilidad basada en el valor artesanal.`,
       config: {
         temperature: 0.7,
       }
