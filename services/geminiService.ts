@@ -6,7 +6,7 @@ let aiInstance: GoogleGenAI | null = null;
 
 const getAI = () => {
   if (aiInstance) return aiInstance;
-  const apiKey = process.env.API_KEY;
+  const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
   if (!apiKey || apiKey === '') {
     console.warn("Gemini API Key no configurada.");
     return null;
