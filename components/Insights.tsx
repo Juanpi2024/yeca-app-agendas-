@@ -10,10 +10,11 @@ interface InsightsProps {
 const Insights: React.FC<InsightsProps> = ({ transactions }) => {
   const [insight, setInsight] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [agendasInProgress, setAgendasInProgress] = useState<number | ''>('');
 
   const fetchInsights = async () => {
     setLoading(true);
-    const result = await getBusinessInsights(transactions);
+    const result = await getBusinessInsights(transactions, agendasInProgress === '' ? undefined : agendasInProgress);
     setInsight(result);
     setLoading(false);
   };
@@ -36,15 +37,35 @@ const Insights: React.FC<InsightsProps> = ({ transactions }) => {
           <h4 className="font-bold text-lg leading-tight">Consejos de IA</h4>
           <p className="text-white/70 text-xs">Análisis inteligente de tu negocio</p>
         </div>
-        <button 
+        <button
           onClick={fetchInsights}
           disabled={loading}
           className="ml-auto p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50"
+          title="Actualizar consejos"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
           </svg>
         </button>
+      </div>
+
+      <div className="mb-4 bg-white/10 rounded-xl p-3 border border-white/20">
+        <label className="block text-xs font-semibold mb-1 opacity-90">¿Cuántas agendas estás confeccionando ahora?</label>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={agendasInProgress}
+            onChange={(e) => setAgendasInProgress(e.target.value === '' ? '' : Number(e.target.value))}
+            placeholder="Ej: 10"
+            className="bg-white/20 border-none rounded-lg px-3 py-2 text-sm w-full placeholder:text-white/40 focus:ring-2 focus:ring-white/50"
+          />
+          <button
+            onClick={fetchInsights}
+            className="bg-white text-rose-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-rose-50 transition-colors whitespace-nowrap"
+          >
+            Analizar
+          </button>
+        </div>
       </div>
 
       <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 min-h-[80px]">
@@ -56,11 +77,11 @@ const Insights: React.FC<InsightsProps> = ({ transactions }) => {
           </div>
         ) : (
           <p className="text-sm leading-relaxed text-white/90 italic">
-            {insight || "Analizando tus datos para darte los mejores consejos..."}
+            {insight || "Ingresa cuántas agendas preparas para un análisis más preciso..."}
           </p>
         )}
       </div>
-      
+
       {!loading && transactions.length === 0 && (
         <p className="text-[10px] text-white/60 mt-2 text-center">Registra ventas para activar el análisis.</p>
       )}

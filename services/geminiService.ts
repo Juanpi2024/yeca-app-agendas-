@@ -15,10 +15,11 @@ const getAI = () => {
   return aiInstance;
 };
 
-export const getBusinessInsights = async (transactions: Transaction[]): Promise<string> => {
+export const getBusinessInsights = async (transactions: Transaction[], agendasInProgress?: number): Promise<string> => {
   if (transactions.length === 0) return "Registra algunas transacciones para obtener consejos personalizados.";
 
   const summary = transactions.map(t => `${t.date}: ${t.type} - ${t.amount} (${t.description})`).join('\n');
+  const agendasContext = agendasInProgress ? `Actualmente Yessica está confeccionando ${agendasInProgress} agendas con los materiales comprados.` : "";
 
   const ai = getAI();
   if (!ai) return "Análisis no disponible (API Key faltante).";
@@ -27,9 +28,15 @@ export const getBusinessInsights = async (transactions: Transaction[]): Promise<
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash',
       contents: `Eres un experto contador y consultor de negocios para el emprendimiento de papelería creativa "Agendes Yeca 2025". 
-      Analiza los siguientes datos financieros y proporciona 3 consejos accionables, breves y motivadores en español:
+      Analiza los siguientes datos financieros y la situación actual:
       
+      ${agendasContext}
+      
+      DATOS DE TRANSACCIONES:
       ${summary}
+      
+      Proporciona 3 consejos accionables, breves y motivadores en español. 
+      Si hay agendas en confección, ayuda a Yessica a calcular el retorno de inversión potencial o sugiere un precio de venta para cubrir los gastos de materiales registrados.
       
       Formato de respuesta: Texto directo, sin negritas innecesarias, máximo 150 palabras.`,
       config: {
