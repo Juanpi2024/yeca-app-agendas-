@@ -2,16 +2,30 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (aiInstance) return aiInstance;
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || apiKey === '') {
+    console.warn("Gemini API Key no configurada.");
+    return null;
+  }
+  aiInstance = new GoogleGenAI({ apiKey });
+  return aiInstance;
+};
 
 export const getBusinessInsights = async (transactions: Transaction[]): Promise<string> => {
   if (transactions.length === 0) return "Registra algunas transacciones para obtener consejos personalizados.";
 
   const summary = transactions.map(t => `${t.date}: ${t.type} - ${t.amount} (${t.description})`).join('\n');
 
+  const ai = getAI();
+  if (!ai) return "Análisis no disponible (API Key faltante).";
+
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: `Eres un experto contador y consultor de negocios para el emprendimiento de papelería creativa "Agendes Yeca 2025". 
       Analiza los siguientes datos financieros y proporciona 3 consejos accionables, breves y motivadores en español:
       
@@ -37,9 +51,12 @@ export const generateEmailReport = async (transactions: Transaction[]): Promise<
   const totalSales = transactions.filter(t => t.type === 'VENTA').reduce((sum, t) => sum + t.amount, 0);
   const totalExpenses = transactions.filter(t => t.type === 'GASTO').reduce((sum, t) => sum + t.amount, 0);
 
+  const ai = getAI();
+  if (!ai) return "Reporte no disponible (API Key faltante).";
+
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.0-flash',
       contents: `Actúa como un asistente contable profesional. Genera un REPORTE DE NEGOCIO detallado y elegante para el emprendimiento "Agendes Yeca 2025".
       
       DATOS ACTUALES:
