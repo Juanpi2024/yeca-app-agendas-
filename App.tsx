@@ -5,30 +5,55 @@ import Dashboard from './components/Dashboard';
 import TransactionForm from './components/TransactionForm';
 import TransactionTable from './components/TransactionTable';
 import Insights from './components/Insights';
+import { sheetService } from './services/sheetService';
 
 const App: React.FC = () => {
-  const [state, setState] = useState<BusinessState>(() => {
-    const saved = localStorage.getItem('agenda_pro_data');
-    return saved ? JSON.parse(saved) : { transactions: [] };
-  });
-
+  const [state, setState] = useState<BusinessState>({ transactions: [] });
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'dashboard' | 'transactions'>('dashboard');
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('agenda_pro_data', JSON.stringify(state));
-  }, [state]);
+    const loadData = async () => {
+      setLoading(true);
+      const data = await sheetService.getTransactions();
+      if (data.length > 0) {
+        setState({ transactions: data });
+      } else {
+        const saved = localStorage.getItem('agenda_pro_data');
+        if (saved) setState(JSON.parse(saved));
+      }
+      setLoading(false);
+    };
+    loadData();
+  }, []);
 
-  const addTransaction = (t: Omit<Transaction, 'id'>) => {
+  useEffect(() => {
+    if (!loading) {
+      localStorage.setItem('agenda_pro_data', JSON.stringify(state));
+    }
+  }, [state, loading]);
+
+  const addTransaction = async (t: Omit<Transaction, 'id'>) => {
     const newTransaction: Transaction = {
       ...t,
       id: crypto.randomUUID()
     };
+
+    // Optimistic update
     setState(prev => ({
       ...prev,
       transactions: [newTransaction, ...prev.transactions]
     }));
+
     setIsFormOpen(false);
+
+    // Sync with Sheets
+    const success = await sheetService.addTransaction(newTransaction);
+    if (!success) {
+      console.error('Error sincronizando con Google Sheets');
+      // Podríamos revertir el cambio local si fuera crítico
+    }
   };
 
   const deleteTransaction = (id: string) => {
@@ -52,13 +77,13 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold text-slate-800">Agendes Yeca <span className="text-rose-500">2025</span></h1>
           </div>
           <nav className="flex gap-1 bg-slate-100 p-1 rounded-full">
-            <button 
+            <button
               onClick={() => setView('dashboard')}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'dashboard' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Resumen
             </button>
-            <button 
+            <button
               onClick={() => setView('transactions')}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'transactions' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
@@ -69,16 +94,23 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 mt-8">
-        {view === 'dashboard' ? (
-          <div className="space-y-8">
-            <Dashboard transactions={state.transactions} />
-            <Insights transactions={state.transactions} />
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+            <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="animate-pulse">Cargando datos desde Google Sheets...</p>
           </div>
         ) : (
-          <TransactionTable 
-            transactions={state.transactions} 
-            onDelete={deleteTransaction} 
-          />
+          view === 'dashboard' ? (
+            <div className="space-y-8">
+              <Dashboard transactions={state.transactions} />
+              <Insights transactions={state.transactions} />
+            </div>
+          ) : (
+            <TransactionTable
+              transactions={state.transactions}
+              onDelete={deleteTransaction}
+            />
+          )
         )}
       </main>
 
@@ -88,7 +120,7 @@ const App: React.FC = () => {
       </footer>
 
       {/* Floating Action Button */}
-      <button 
+      <button
         onClick={() => setIsFormOpen(true)}
         className="fixed bottom-6 right-6 w-14 h-14 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-xl shadow-rose-200 flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-20"
       >
