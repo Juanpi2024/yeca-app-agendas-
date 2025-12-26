@@ -1,24 +1,93 @@
-
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agendes Yeca 2025 - Contabilidad Creativa</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&display=swap"
+        rel="stylesheet">
     <style>
+        :root {
+            --rose-500: #f43f5e;
+            --rose-600: #e11d48;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #fdfaf9;
+            background: radial-gradient(circle at top right, #fff5f5, #fdfaf9);
+            min-height: 100vh;
+            margin: 0;
         }
-        h1, h2, h3, .font-heading {
+
+        h1,
+        h2,
+        h3,
+        .font-heading {
             font-family: 'Outfit', sans-serif;
+        }
+
+        #root:empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        #root:empty::after {
+            content: "";
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f1f5f9;
+            border-top-color: var(--rose-500);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .deployment-error {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fff;
+            padding: 1rem 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #f43f5e;
+            z-index: 1000;
+            max-width: 90%;
+            text-align: center;
         }
     </style>
 </head>
+
 <body>
     <div id="root"></div>
+    <div id="error-msg" class="deployment-error">
+        <p><strong>¡Aviso de Configuración!</strong></p>
+        <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.5rem;">
+            Si ves esta pantalla blanca, ve a GitHub -> Settings -> Pages y cambia "Source" a "GitHub Actions".
+        </p>
+    </div>
     <script type="module" src="./index.tsx"></script>
+    <script>
+        // Fallback simple: si después de 5s no hay nada en root, mostrar ayuda
+        setTimeout(() => {
+            const root = document.getElementById('root');
+            if (root && root.innerHTML === "") {
+                document.getElementById('error-msg').style.display = 'block';
+            }
+        }, 5000);
+    </script>
 </body>
+
 </html>
