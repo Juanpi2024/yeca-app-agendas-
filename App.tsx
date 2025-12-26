@@ -7,7 +7,7 @@ import TransactionTable from './components/TransactionTable';
 import Insights from './components/Insights';
 import OrderForm from './components/OrderForm';
 import OrderTable from './components/OrderTable';
-import { InfiniteGrid } from './components/ui/infinite-grid-integration';
+import { PremiumBackground as InfiniteGrid } from './components/ui/infinite-grid-integration';
 import { sheetService } from './services/sheetService';
 
 const App: React.FC = () => {
