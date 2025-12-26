@@ -48,9 +48,17 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders }) => {
                                 return (
                                     <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-6 py-4">
-                                            <div className="text-sm font-bold text-slate-800">{new Date(order.deliveryDate).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</div>
+                                            <div className="text-sm font-bold text-slate-800">
+                                                {isNaN(new Date(order.deliveryDate).getTime())
+                                                    ? 'Sin fecha'
+                                                    : new Date(order.deliveryDate).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })
+                                                }
+                                            </div>
                                             <div className="text-[10px] text-slate-400 uppercase font-semibold">
-                                                {days < 0 ? 'Vencido' : `En ${days} días`}
+                                                {isNaN(new Date(order.deliveryDate).getTime())
+                                                    ? '---'
+                                                    : (days < 0 ? 'Vencido' : `En ${days} días`)
+                                                }
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
