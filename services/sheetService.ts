@@ -35,7 +35,17 @@ export const sheetService = {
             const response = await fetch(`${API_URL}?action=getOrders`);
             if (!response.ok) return [];
             const data = await response.json();
-            return data.map((o: any) => ({ ...o, value: Number(o.value) }));
+            // Mapeamos las claves en minúsculas del Apps Script a las camelCase de TypeScript
+            return data.map((o: any) => ({
+                id: o.id,
+                clientName: o.clientname,
+                productType: o.producttype,
+                value: Number(o.value),
+                details: o.details,
+                deliveryDate: o.deliverydate,
+                status: o.status,
+                createdAt: o.createdat
+            }));
         } catch (error) {
             console.error('Error in getOrders:', error);
             return [];
