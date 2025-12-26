@@ -1,4 +1,5 @@
 
+// Agendes Yeca 2025 - OpenAI Edition
 import OpenAI from 'openai';
 import { Transaction } from "../types";
 
