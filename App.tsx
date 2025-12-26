@@ -1,32 +1,36 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Transaction, BusinessState } from './types';
+import React, { useState, useEffect } from 'react';
+import { Transaction, Order, BusinessState } from './types';
 import Dashboard from './components/Dashboard';
 import TransactionForm from './components/TransactionForm';
 import TransactionTable from './components/TransactionTable';
 import Insights from './components/Insights';
+import OrderForm from './components/OrderForm';
+import OrderTable from './components/OrderTable';
 import { sheetService } from './services/sheetService';
 
 const App: React.FC = () => {
-  const [state, setState] = useState<BusinessState>({ transactions: [] });
+  const [state, setState] = useState<BusinessState>({ transactions: [], orders: [] });
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'dashboard' | 'transactions'>('dashboard');
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [view, setView] = useState<'dashboard' | 'transactions' | 'orders'>('dashboard');
+  const [modalType, setModalType] = useState<'transaction' | 'order' | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const data = await sheetService.getTransactions();
-        if (data && data.length > 0) {
-          setState({ transactions: data });
-        } else {
-          const saved = localStorage.getItem('agenda_pro_data');
-          if (saved) setState(JSON.parse(saved));
-        }
+        const [transactions, orders] = await Promise.all([
+          sheetService.getTransactions(),
+          sheetService.getOrders()
+        ]);
+
+        setState({
+          transactions: transactions || [],
+          orders: orders || []
+        });
       } catch (error) {
         console.error("Error loading data:", error);
-        const saved = localStorage.getItem('agenda_pro_data');
+        const saved = localStorage.getItem('agenda_pro_data_v2');
         if (saved) setState(JSON.parse(saved));
       } finally {
         setLoading(false);
@@ -43,7 +47,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!loading) {
-      localStorage.setItem('agenda_pro_data', JSON.stringify(state));
+      localStorage.setItem('agenda_pro_data_v2', JSON.stringify(state));
     }
   }, [state, loading]);
 
@@ -59,14 +63,24 @@ const App: React.FC = () => {
       transactions: [newTransaction, ...prev.transactions]
     }));
 
-    setIsFormOpen(false);
+    setModalType(null);
+  };
 
-    // Sync with Sheets
-    const success = await sheetService.addTransaction(newTransaction);
-    if (!success) {
-      console.error('Error sincronizando con Google Sheets');
-      // Podríamos revertir el cambio local si fuera crítico
-    }
+  const addOrder = async (o: Omit<Order, 'id' | 'status' | 'createdAt'>) => {
+    const newOrder: Order = {
+      ...o,
+      id: crypto.randomUUID(),
+      status: 'PENDIENTE',
+      createdAt: new Date().toISOString()
+    };
+
+    setState(prev => ({
+      ...prev,
+      orders: [newOrder, ...prev.orders]
+    }));
+
+    setModalType(null);
+    await sheetService.addOrder(newOrder);
   };
 
   const deleteTransaction = (id: string) => {
@@ -100,7 +114,13 @@ const App: React.FC = () => {
               onClick={() => setView('transactions')}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'transactions' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Movimientos
+              Caja
+            </button>
+            <button
+              onClick={() => setView('orders')}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'orders' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Pedidos
             </button>
           </nav>
         </div>
@@ -128,10 +148,10 @@ const App: React.FC = () => {
               Aún no tienes movimientos registrados. Comienza agregando tu primera venta o gasto con el botón de abajo.
             </p>
             <button
-              onClick={() => setIsFormOpen(true)}
+              onClick={() => setModalType('order')}
               className="inline-flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-xl shadow-rose-200 active:scale-95"
             >
-              Registrar Primer Movimiento
+              Registrar Primer Pedido
             </button>
           </div>
         ) : (
@@ -140,12 +160,16 @@ const App: React.FC = () => {
               <Dashboard transactions={state.transactions} />
               <Insights transactions={state.transactions} />
             </div>
-          ) : (
+          ) : view === 'transactions' ? (
             <div className="animate-in fade-in duration-500">
               <TransactionTable
                 transactions={state.transactions}
                 onDelete={deleteTransaction}
               />
+            </div>
+          ) : (
+            <div className="animate-in fade-in duration-500">
+              <OrderTable orders={state.orders} />
             </div>
           )
         )}
@@ -156,31 +180,53 @@ const App: React.FC = () => {
         <p>App creada por Juan P. Ramirez . Product Manager</p>
       </footer>
 
-      {/* Floating Action Button */}
-      <button
-        onClick={() => setIsFormOpen(true)}
-        aria-label="Agregar nueva transacción"
-        className="fixed bottom-6 right-6 w-14 h-14 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-xl shadow-rose-200 flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-20"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-8 h-8">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-        </svg>
-      </button>
+      {/* Floating Action Buttons */}
+      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-20">
+        <button
+          onClick={() => setModalType('order')}
+          aria-label="Nuevo Pedido"
+          className="w-14 h-14 bg-slate-800 hover:bg-slate-900 text-white rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 group relative"
+          title="Nuevo Pedido"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+          </svg>
+          <span className="absolute right-16 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Nuevo Pedido</span>
+        </button>
+
+        <button
+          onClick={() => setModalType('transaction')}
+          aria-label="Nueva Venta o Gasto"
+          className="w-14 h-14 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-xl shadow-rose-200 flex items-center justify-center transition-all hover:scale-110 active:scale-95 group relative"
+          title="Nueva Venta/Gasto"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-8 h-8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          <span className="absolute right-16 bg-rose-500 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Venta / Gasto</span>
+        </button>
+      </div>
 
       {/* Modal Form */}
-      {isFormOpen && (
+      {modalType && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-slate-800">Nueva Transacción</h2>
-              <button onClick={() => setIsFormOpen(false)} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">
+              <h2 className="text-xl font-bold text-slate-800">
+                {modalType === 'transaction' ? 'Nueva Transacción' : 'Nuevo Pedido Personalizado'}
+              </h2>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
             <div className="p-6">
-              <TransactionForm onSubmit={addTransaction} onCancel={() => setIsFormOpen(false)} />
+              {modalType === 'transaction' ? (
+                <TransactionForm onSubmit={addTransaction} onCancel={() => setModalType(null)} />
+              ) : (
+                <OrderForm onSubmit={addOrder} onCancel={() => setModalType(null)} />
+              )}
             </div>
           </div>
         </div>

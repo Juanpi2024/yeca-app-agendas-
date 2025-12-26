@@ -10,8 +10,20 @@ export interface Transaction {
   date: string;
 }
 
+export interface Order {
+  id: string;
+  clientName: string;
+  productType: string;
+  value: number;
+  details: string;
+  deliveryDate: string;
+  status: 'PENDIENTE' | 'ENTREGADO' | 'CANCELADO';
+  createdAt: string;
+}
+
 export interface BusinessState {
   transactions: Transaction[];
+  orders: Order[];
 }
 
 export const CATEGORIES = {
