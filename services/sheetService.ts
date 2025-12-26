@@ -1,7 +1,7 @@
 
 import { Transaction, Order } from '../types';
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbzN0EOa-oniymHlKJbfv2MvLH5Z5QNPFisCAYxbMtSjqIWY7YKw0wtAB7VcMA7nD0cN/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxLE10gKyrvFiS0UjF1MoOUOPjXb91V-SBTSDZ_NdpeCLD4uEU_7vZvxdqXUG3BEi-G/exec';
 
 export const sheetService = {
     async getTransactions(): Promise<Transaction[]> {
