@@ -85,6 +85,47 @@ const App: React.FC = () => {
     await sheetService.addOrder(newOrder);
   };
 
+  const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
+    const order = state.orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const updatedOrder = { ...order, status: newStatus };
+
+    // Update locally
+    setState(prev => ({
+      ...prev,
+      orders: prev.orders.map(o => o.id === orderId ? updatedOrder : o)
+    }));
+
+    // Sync with Sheets
+    await sheetService.updateOrder(updatedOrder);
+
+    // CRITICAL: If delivered, auto-register a sale
+    if (newStatus === 'ENTREGADO') {
+      const sale: Omit<Transaction, 'id'> = {
+        type: 'VENTA',
+        amount: order.value,
+        description: `Venta: ${order.productType} - ${order.clientName}`,
+        category: 'Agenda Personalizada', // Categoría por defecto para pedidos
+        date: new Date().toISOString().split('T')[0]
+      };
+      await addTransaction(sale);
+    }
+  };
+
+  const deleteOrder = async (orderId: string) => {
+    if (!confirm('¿Estás segura de eliminar este pedido?')) return;
+
+    // Remove locally
+    setState(prev => ({
+      ...prev,
+      orders: prev.orders.filter(o => o.id !== orderId)
+    }));
+
+    // Sync with Sheets
+    await sheetService.deleteOrder(orderId);
+  };
+
   const deleteTransaction = (id: string) => {
     setState(prev => ({
       ...prev,
@@ -184,7 +225,11 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="animate-in fade-in duration-500">
-                <OrderTable orders={state.orders} />
+                <OrderTable
+                  orders={state.orders}
+                  onUpdateStatus={updateOrderStatus}
+                  onDeleteOrder={deleteOrder}
+                />
               </div>
             )
           )}

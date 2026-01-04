@@ -92,5 +92,43 @@ export const sheetService = {
             console.error('Error in addOrder:', error);
             return false;
         }
+    },
+
+    async updateOrder(order: Order): Promise<boolean> {
+        try {
+            const dataToSave = {
+                id: order.id,
+                clientname: order.clientName,
+                producttype: order.productType,
+                value: order.value,
+                details: order.details,
+                deliverydate: order.deliveryDate,
+                status: order.status,
+                createdat: order.createdAt
+            };
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ action: 'updateOrder', data: dataToSave }),
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Error in updateOrder:', error);
+            return false;
+        }
+    },
+
+    async deleteOrder(id: string): Promise<boolean> {
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ action: 'deleteOrder', data: { id } }),
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Error in deleteOrder:', error);
+            return false;
+        }
     }
 };
