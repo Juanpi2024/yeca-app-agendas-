@@ -6,7 +6,11 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxLE10gKyrvFiS0UjF1MoOU
 export const sheetService = {
     async getTransactions(): Promise<Transaction[]> {
         try {
-            const response = await fetch(`${API_URL}?action=getTransactions`);
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ action: 'getTransactions' }),
+            });
             if (!response.ok) return [];
             const data = await response.json();
             // Mapeamos claves en minúsculas del Apps Script a camelCase
@@ -49,7 +53,11 @@ export const sheetService = {
 
     async getOrders(): Promise<Order[]> {
         try {
-            const response = await fetch(`${API_URL}?action=getOrders`);
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ action: 'getOrders' }),
+            });
             if (!response.ok) return [];
             const data = await response.json();
             // Mapeamos las claves en minúsculas del Apps Script a las camelCase de TypeScript
