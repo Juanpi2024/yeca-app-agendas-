@@ -65,6 +65,7 @@ const App: React.FC = () => {
     }));
 
     setModalType(null);
+    await sheetService.addTransaction(newTransaction);
   };
 
   const addOrder = async (o: Omit<Order, 'id' | 'status' | 'createdAt'>) => {
