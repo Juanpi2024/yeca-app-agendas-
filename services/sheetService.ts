@@ -9,7 +9,15 @@ export const sheetService = {
             const response = await fetch(`${API_URL}?action=getTransactions`);
             if (!response.ok) return [];
             const data = await response.json();
-            return data.map((t: any) => ({ ...t, amount: Number(t.amount) }));
+            // Mapeamos claves en minúsculas del Apps Script a camelCase
+            return data.map((t: any) => ({
+                id: t.id,
+                type: t.type,
+                amount: Number(t.amount),
+                description: t.description,
+                category: t.category,
+                date: t.date
+            }));
         } catch (error) {
             console.error('Error in getTransactions:', error);
             return [];
@@ -18,10 +26,19 @@ export const sheetService = {
 
     async addTransaction(transaction: Transaction): Promise<boolean> {
         try {
+            // Normalizamos data para asegurar consistencia con lo que espera el script
+            const dataToSave = {
+                id: transaction.id,
+                type: transaction.type,
+                amount: transaction.amount,
+                description: transaction.description,
+                category: transaction.category,
+                date: transaction.date
+            };
             const response = await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ action: 'addTransaction', data: transaction }),
+                body: JSON.stringify({ action: 'addTransaction', data: dataToSave }),
             });
             return response.ok;
         } catch (error) {
@@ -54,10 +71,21 @@ export const sheetService = {
 
     async addOrder(order: Order): Promise<boolean> {
         try {
+            // Normalizamos data
+            const dataToSave = {
+                id: order.id,
+                clientName: order.clientName,
+                productType: order.productType,
+                value: order.value,
+                details: order.details,
+                deliveryDate: order.deliveryDate,
+                status: order.status,
+                createdAt: order.createdAt
+            };
             const response = await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ action: 'addOrder', data: order }),
+                body: JSON.stringify({ action: 'addOrder', data: dataToSave }),
             });
             return response.ok;
         } catch (error) {

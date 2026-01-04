@@ -142,7 +142,7 @@ const App: React.FC = () => {
               <p className="font-medium text-slate-600 animate-pulse">Sincronizando con Agendes Yeca...</p>
               <p className="text-xs mt-2 text-slate-400">Esto suele tardar unos segundos</p>
             </div>
-          ) : state.transactions.length === 0 ? (
+          ) : (state.transactions.length === 0 && state.orders.length === 0) ? (
             <div className="text-center py-20 px-6 bg-white rounded-3xl border border-dashed border-slate-200">
               <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-rose-500">
@@ -151,14 +151,22 @@ const App: React.FC = () => {
               </div>
               <h2 className="text-2xl font-bold text-slate-800 mb-2">¡Bienvenida, Yessica!</h2>
               <p className="text-slate-500 max-w-sm mx-auto mb-8">
-                Aún no tienes movimientos registrados. Comienza agregando tu primera venta o gasto con el botón de abajo.
+                Aún no tienes movimientos o pedidos registrados. Comienza agregando tu primer registro con los botones de abajo.
               </p>
-              <button
-                onClick={() => setModalType('order')}
-                className="inline-flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-xl shadow-rose-200 active:scale-95"
-              >
-                Registrar Primer Pedido
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setModalType('order')}
+                  className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold transition-all active:scale-95"
+                >
+                  Nuevo Pedido
+                </button>
+                <button
+                  onClick={() => setModalType('transaction')}
+                  className="inline-flex items-center justify-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-xl shadow-rose-200 active:scale-95"
+                >
+                  Nueva Venta/Gasto
+                </button>
+              </div>
             </div>
           ) : (
             view === 'dashboard' ? (
