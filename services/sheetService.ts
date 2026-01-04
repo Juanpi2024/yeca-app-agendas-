@@ -138,5 +138,19 @@ export const sheetService = {
             console.error('Error in deleteOrder:', error);
             return false;
         }
+    },
+
+    async deleteTransaction(id: string): Promise<boolean> {
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ action: 'deleteTransaction', data: { id } }),
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Error in deleteTransaction:', error);
+            return false;
+        }
     }
 };

@@ -15,6 +15,10 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'dashboard' | 'transactions' | 'orders'>('dashboard');
   const [modalType, setModalType] = useState<'transaction' | 'order' | null>(null);
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+
+  // Helper to check if an ID is being processed
+  const isProcessing = (id: string) => processingIds.has(id);
 
   useEffect(() => {
     const loadData = async () => {
@@ -53,10 +57,12 @@ const App: React.FC = () => {
   }, [state, loading]);
 
   const addTransaction = async (t: Omit<Transaction, 'id'>) => {
-    const newTransaction: Transaction = {
-      ...t,
-      id: crypto.randomUUID()
-    };
+    const id = crypto.randomUUID();
+    const newTransaction: Transaction = { ...t, id };
+
+    // Prevent duplicate processing
+    if (processingIds.has(id)) return;
+    setProcessingIds(prev => new Set(prev).add(id));
 
     // Optimistic update
     setState(prev => ({
@@ -65,16 +71,28 @@ const App: React.FC = () => {
     }));
 
     setModalType(null);
-    await sheetService.addTransaction(newTransaction);
+    try {
+      await sheetService.addTransaction(newTransaction);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const addOrder = async (o: Omit<Order, 'id' | 'status' | 'createdAt'>) => {
+    const id = crypto.randomUUID();
     const newOrder: Order = {
       ...o,
-      id: crypto.randomUUID(),
+      id,
       status: 'PENDIENTE',
       createdAt: new Date().toISOString()
     };
+
+    if (processingIds.has(id)) return;
+    setProcessingIds(prev => new Set(prev).add(id));
 
     setState(prev => ({
       ...prev,
@@ -82,13 +100,22 @@ const App: React.FC = () => {
     }));
 
     setModalType(null);
-    await sheetService.addOrder(newOrder);
+    try {
+      await sheetService.addOrder(newOrder);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
     const order = state.orders.find(o => o.id === orderId);
-    if (!order) return;
+    if (!order || processingIds.has(orderId)) return;
 
+    setProcessingIds(prev => new Set(prev).add(orderId));
     const updatedOrder = { ...order, status: newStatus };
 
     // Update locally
@@ -97,19 +124,27 @@ const App: React.FC = () => {
       orders: prev.orders.map(o => o.id === orderId ? updatedOrder : o)
     }));
 
-    // Sync with Sheets
-    await sheetService.updateOrder(updatedOrder);
+    try {
+      // Sync with Sheets
+      await sheetService.updateOrder(updatedOrder);
 
-    // CRITICAL: If delivered, auto-register a sale
-    if (newStatus === 'ENTREGADO') {
-      const sale: Omit<Transaction, 'id'> = {
-        type: 'VENTA',
-        amount: order.value,
-        description: `Venta: ${order.productType} - ${order.clientName}`,
-        category: 'Agenda Personalizada', // Categoría por defecto para pedidos
-        date: new Date().toISOString().split('T')[0]
-      };
-      await addTransaction(sale);
+      // CRITICAL: If delivered, auto-register a sale
+      if (newStatus === 'ENTREGADO') {
+        const sale: Omit<Transaction, 'id'> = {
+          type: 'VENTA',
+          amount: order.value,
+          description: `Venta: ${order.productType} - ${order.clientName}`,
+          category: 'Agenda Personalizada', // Categoría por defecto para pedidos
+          date: new Date().toISOString().split('T')[0]
+        };
+        await addTransaction(sale);
+      }
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
     }
   };
 
@@ -126,11 +161,26 @@ const App: React.FC = () => {
     await sheetService.deleteOrder(orderId);
   };
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = async (id: string) => {
+    if (!confirm('¿Estás segura de eliminar este movimiento?')) return;
+    if (processingIds.has(id)) return;
+    setProcessingIds(prev => new Set(prev).add(id));
+
+    // Remove locally
     setState(prev => ({
       ...prev,
       transactions: prev.transactions.filter(t => t.id !== id)
     }));
+
+    try {
+      await sheetService.deleteTransaction(id);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   return (
@@ -229,6 +279,7 @@ const App: React.FC = () => {
                   orders={state.orders}
                   onUpdateStatus={updateOrderStatus}
                   onDeleteOrder={deleteOrder}
+                  processingIds={processingIds}
                 />
               </div>
             )

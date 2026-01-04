@@ -6,9 +6,11 @@ interface OrderTableProps {
     orders: Order[];
     onUpdateStatus: (id: string, status: Order['status']) => void;
     onDeleteOrder: (id: string) => void;
+    processingIds?: Set<string>;
 }
 
-export function OrderTable({ orders, onUpdateStatus, onDeleteOrder }: OrderTableProps) {
+export function OrderTable({ orders, onUpdateStatus, onDeleteOrder, processingIds }: OrderTableProps) {
+    const isItemProcessing = (id: string) => processingIds?.has(id);
     const [selectedOrder, setSelectedOrder] = React.useState<Order | null>(null);
     const sortedOrders = [...orders].sort((a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime());
 
@@ -89,30 +91,38 @@ export function OrderTable({ orders, onUpdateStatus, onDeleteOrder }: OrderTable
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    {!isDelivered ? (
-                                                        <button
-                                                            onClick={() => onUpdateStatus(order.id, 'ENTREGADO')}
-                                                            className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-100 group shadow-sm"
-                                                            title="Marcar como entregado"
-                                                        >
-                                                            <CheckCircle2 size={18} className="group-hover:scale-110" />
-                                                        </button>
+                                                    {isItemProcessing(order.id) ? (
+                                                        <div className="p-2 text-slate-400 animate-spin">
+                                                            <Clock size={18} />
+                                                        </div>
                                                     ) : (
-                                                        <button
-                                                            onClick={() => onUpdateStatus(order.id, 'PENDIENTE')}
-                                                            className="p-2 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-100 transition-all border border-slate-100 group"
-                                                            title="Volver a pendiente"
-                                                        >
-                                                            <Clock size={18} className="group-hover:scale-110" />
-                                                        </button>
+                                                        <>
+                                                            {!isDelivered ? (
+                                                                <button
+                                                                    onClick={() => onUpdateStatus(order.id, 'ENTREGADO')}
+                                                                    className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-100 group shadow-sm disabled:opacity-50"
+                                                                    title="Marcar como entregado"
+                                                                >
+                                                                    <CheckCircle2 size={18} className="group-hover:scale-110" />
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => onUpdateStatus(order.id, 'PENDIENTE')}
+                                                                    className="p-2 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-100 transition-all border border-slate-100 group disabled:opacity-50"
+                                                                    title="Volver a pendiente"
+                                                                >
+                                                                    <Clock size={18} className="group-hover:scale-110" />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => onDeleteOrder(order.id)}
+                                                                className="p-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-all border border-rose-100 group shadow-sm disabled:opacity-50"
+                                                                title="Eliminar pedido"
+                                                            >
+                                                                <Trash2 size={18} className="group-hover:scale-110 text-rose-500" />
+                                                            </button>
+                                                        </>
                                                     )}
-                                                    <button
-                                                        onClick={() => onDeleteOrder(order.id)}
-                                                        className="p-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-all border border-rose-100 group shadow-sm"
-                                                        title="Eliminar pedido"
-                                                    >
-                                                        <Trash2 size={18} className="group-hover:scale-110 text-rose-500" />
-                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
