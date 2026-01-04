@@ -26,14 +26,14 @@ export const sheetService = {
 
     async addTransaction(transaction: Transaction): Promise<boolean> {
         try {
-            // Normalizamos data para asegurar consistencia con lo que espera el script
+            // ALINEADO CON EXCEL: id, date, amount, type, category, description
             const dataToSave = {
                 id: transaction.id,
-                type: transaction.type,
-                amount: transaction.amount,
-                description: transaction.description,
-                category: transaction.category,
-                date: transaction.date
+                date: transaction.date,        // Columna B
+                amount: transaction.amount,    // Columna C
+                type: transaction.type,        // Columna D
+                category: transaction.category,// Columna E
+                description: transaction.description // Columna F
             };
             const response = await fetch(API_URL, {
                 method: 'POST',
@@ -74,13 +74,13 @@ export const sheetService = {
             // Normalizamos data
             const dataToSave = {
                 id: order.id,
-                clientName: order.clientName,
-                productType: order.productType,
+                clientname: order.clientName,
+                producttype: order.productType,
                 value: order.value,
                 details: order.details,
-                deliveryDate: order.deliveryDate,
+                deliverydate: order.deliveryDate,
                 status: order.status,
-                createdAt: order.createdAt
+                createdat: order.createdAt
             };
             const response = await fetch(API_URL, {
                 method: 'POST',
