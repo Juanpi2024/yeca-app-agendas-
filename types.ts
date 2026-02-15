@@ -18,6 +18,7 @@ export interface Order {
   details: string;
   deliveryDate: string;
   status: 'PENDIENTE' | 'ENTREGADO' | 'CANCELADO';
+  paid: boolean;
   createdAt: string;
 }
 

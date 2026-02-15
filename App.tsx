@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'dashboard' | 'transactions' | 'orders'>('dashboard');
   const [modalType, setModalType] = useState<'transaction' | 'order' | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
   // Helper to check if an ID is being processed
@@ -88,6 +89,7 @@ const App: React.FC = () => {
       ...o,
       id,
       status: 'PENDIENTE',
+      paid: false,
       createdAt: new Date().toISOString()
     };
 
@@ -111,6 +113,64 @@ const App: React.FC = () => {
     }
   };
 
+  const toggleOrderPayment = async (orderId: string) => {
+    const order = state.orders.find(o => o.id === orderId);
+    if (!order || processingIds.has(orderId)) return;
+
+    if (order.paid) return;
+
+    setProcessingIds(prev => new Set(prev).add(orderId));
+
+    // 1. Mark as paid locally
+    const updatedOrder = { ...order, paid: true };
+    setState(prev => ({
+      ...prev,
+      orders: prev.orders.map(o => o.id === orderId ? updatedOrder : o)
+    }));
+
+    try {
+      // 2. Sync Order with Sheets
+      await sheetService.updateOrder(updatedOrder);
+
+      // 3. Create Transaction (Sale)
+      const sale: Omit<Transaction, 'id'> = {
+        type: 'VENTA',
+        amount: order.value,
+        description: `Venta: ${order.productType} - ${order.clientName}`,
+        category: 'Agenda Personalizada',
+        date: new Date().toISOString().split('T')[0]
+      };
+      await addTransaction(sale);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+    }
+  };
+
+  const updateOrder = async (updatedOrder: Order) => {
+    if (processingIds.has(updatedOrder.id)) return;
+    setProcessingIds(prev => new Set(prev).add(updatedOrder.id));
+
+    // Update locally
+    setState(prev => ({
+      ...prev,
+      orders: prev.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o)
+    }));
+
+    try {
+      await sheetService.updateOrder(updatedOrder);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(updatedOrder.id);
+        return next;
+      });
+    }
+  };
+
   const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
     const order = state.orders.find(o => o.id === orderId);
     if (!order || processingIds.has(orderId)) return;
@@ -127,18 +187,6 @@ const App: React.FC = () => {
     try {
       // Sync with Sheets
       await sheetService.updateOrder(updatedOrder);
-
-      // CRITICAL: If delivered, auto-register a sale
-      if (newStatus === 'ENTREGADO') {
-        const sale: Omit<Transaction, 'id'> = {
-          type: 'VENTA',
-          amount: order.value,
-          description: `Venta: ${order.productType} - ${order.clientName}`,
-          category: 'Agenda Personalizada', // Categoría por defecto para pedidos
-          date: new Date().toISOString().split('T')[0]
-        };
-        await addTransaction(sale);
-      }
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -280,6 +328,11 @@ const App: React.FC = () => {
                   onUpdateStatus={updateOrderStatus}
                   onDeleteOrder={deleteOrder}
                   processingIds={processingIds}
+                  onTogglePayment={toggleOrderPayment}
+                  onEditOrder={(order) => {
+                    setEditingOrder(order);
+                    setModalType('order');
+                  }}
                 />
               </div>
             )
@@ -294,7 +347,10 @@ const App: React.FC = () => {
         {/* Floating Action Buttons */}
         <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-20">
           <button
-            onClick={() => setModalType('order')}
+            onClick={() => {
+              setEditingOrder(null);
+              setModalType('order');
+            }}
             aria-label="Nuevo Pedido"
             className="w-14 h-14 bg-slate-800 hover:bg-slate-900 text-white rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 group relative"
             title="Nuevo Pedido"
@@ -324,7 +380,7 @@ const App: React.FC = () => {
             <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                 <h2 className="text-xl font-bold text-slate-800">
-                  {modalType === 'transaction' ? 'Nueva Transacción' : 'Nuevo Pedido Personalizado'}
+                  {modalType === 'transaction' ? 'Nueva Transacción' : (editingOrder ? 'Editar Pedido' : 'Nuevo Pedido Personalizado')}
                 </h2>
                 <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
@@ -336,7 +392,18 @@ const App: React.FC = () => {
                 {modalType === 'transaction' ? (
                   <TransactionForm onSubmit={addTransaction} onCancel={() => setModalType(null)} />
                 ) : (
-                  <OrderForm onSubmit={addOrder} onCancel={() => setModalType(null)} />
+                  <OrderForm
+                    onSubmit={(data) => {
+                      if (editingOrder) {
+                        updateOrder({ ...editingOrder, ...data });
+                        setModalType(null);
+                      } else {
+                        addOrder(data);
+                      }
+                    }}
+                    onCancel={() => setModalType(null)}
+                    initialData={editingOrder || undefined}
+                  />
                 )}
               </div>
             </div>

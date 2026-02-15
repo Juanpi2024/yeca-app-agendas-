@@ -1,24 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Order } from '../types';
-import { CheckCircle2, Trash2, Clock, X, Info } from 'lucide-react';
+import { CheckCircle2, Trash2, Clock, X, Info, Edit, DollarSign } from 'lucide-react';
 
 interface OrderTableProps {
     orders: Order[];
     onUpdateStatus: (id: string, status: Order['status']) => void;
     onDeleteOrder: (id: string) => void;
+    onTogglePayment: (id: string) => void;
+    onEditOrder: (order: Order) => void;
     processingIds?: Set<string>;
 }
 
-export function OrderTable({ orders, onUpdateStatus, onDeleteOrder, processingIds }: OrderTableProps) {
+export function OrderTable({ orders, onUpdateStatus, onDeleteOrder, onTogglePayment, onEditOrder, processingIds }: OrderTableProps) {
     const isItemProcessing = (id: string) => processingIds?.has(id);
-    const [selectedOrder, setSelectedOrder] = React.useState<Order | null>(null);
+    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const sortedOrders = [...orders].sort((a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime());
+
+    // Helper to parse "YYYY-MM-DD" correctly in local time
+    const parseLocalDate = (dateStr: string) => {
+        if (!dateStr) return new Date();
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
+    };
 
     const getDaysRemaining = (dateStr: string) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const delivery = new Date(dateStr);
-        delivery.setHours(0, 0, 0, 0);
+        const delivery = parseLocalDate(dateStr);
         const diffTime = delivery.getTime() - today.getTime();
         return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     };
@@ -44,28 +52,27 @@ export function OrderTable({ orders, onUpdateStatus, onDeleteOrder, processingId
                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Entrega</th>
                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Cliente / Producto</th>
                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Valor</th>
+                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-center">Estado Pago</th>
                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {sortedOrders.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-10 text-center text-slate-400 italic">No hay pedidos pendientes</td>
+                                    <td colSpan={5} className="px-6 py-10 text-center text-slate-400 italic">No hay pedidos pendientes</td>
                                 </tr>
                             ) : (
                                 sortedOrders.map((order) => {
                                     const days = getDaysRemaining(order.deliveryDate);
                                     const status = getStatusDisplay(order);
                                     const isDelivered = order.status === 'ENTREGADO';
+                                    const isPaid = order.paid;
 
                                     return (
                                         <tr key={order.id} className={`hover:bg-slate-50/50 transition-colors ${isDelivered ? 'opacity-60' : ''}`}>
                                             <td className="px-6 py-4">
                                                 <div className="text-sm font-bold text-slate-800">
-                                                    {isNaN(new Date(order.deliveryDate).getTime())
-                                                        ? 'Sin fecha'
-                                                        : new Date(order.deliveryDate).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })
-                                                    }
+                                                    {parseLocalDate(order.deliveryDate).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}
                                                 </div>
                                                 <div className="text-[10px] text-slate-400 uppercase font-semibold">
                                                     {isDelivered ? 'Finalizado' : (days < 0 ? 'Vencido' : `En ${days} días`)}
@@ -83,11 +90,26 @@ export function OrderTable({ orders, onUpdateStatus, onDeleteOrder, processingId
                                                     <div className="text-xs text-slate-500">{order.productType}</div>
                                                 </button>
                                             </td>
-                                            <td className="px-6 py-4 text-center">
+                                            <td className="px-6 py-4">
                                                 <div className="text-sm font-bold text-slate-800">${order.value.toLocaleString()}</div>
                                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${status.color}`}>
                                                     {status.label}
                                                 </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                {isPaid ? (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider">
+                                                        <CheckCircle2 size={12} /> Pagado
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => onTogglePayment(order.id)}
+                                                        disabled={isItemProcessing(order.id)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
+                                                    >
+                                                        <DollarSign size={12} /> Pendiente
+                                                    </button>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center justify-center gap-2">
@@ -97,6 +119,14 @@ export function OrderTable({ orders, onUpdateStatus, onDeleteOrder, processingId
                                                         </div>
                                                     ) : (
                                                         <>
+                                                            <button
+                                                                onClick={() => onEditOrder(order)}
+                                                                className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-100 group shadow-sm disabled:opacity-50"
+                                                                title="Editar pedido"
+                                                            >
+                                                                <Edit size={18} className="group-hover:scale-110" />
+                                                            </button>
+
                                                             {!isDelivered ? (
                                                                 <button
                                                                     onClick={() => onUpdateStatus(order.id, 'ENTREGADO')}
@@ -167,7 +197,7 @@ export function OrderTable({ orders, onUpdateStatus, onDeleteOrder, processingId
                                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase">Entrega</p>
                                     <p className="text-lg font-bold text-slate-800">
-                                        {new Date(selectedOrder.deliveryDate).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}
+                                        {parseLocalDate(selectedOrder.deliveryDate).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}
                                     </p>
                                 </div>
                             </div>

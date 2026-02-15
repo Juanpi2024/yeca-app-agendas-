@@ -69,6 +69,7 @@ export const sheetService = {
                 details: o.details,
                 deliveryDate: o.deliverydate,
                 status: o.status,
+                paid: o.paid,
                 createdAt: o.createdat
             }));
         } catch (error) {
@@ -88,6 +89,7 @@ export const sheetService = {
                 details: order.details,
                 deliverydate: order.deliveryDate,
                 status: order.status,
+                paid: order.paid,
                 createdat: order.createdAt
             };
             const response = await fetch(API_URL, {
@@ -112,6 +114,7 @@ export const sheetService = {
                 details: order.details,
                 deliverydate: order.deliveryDate,
                 status: order.status,
+                paid: order.paid,
                 createdat: order.createdAt
             };
             const response = await fetch(API_URL, {

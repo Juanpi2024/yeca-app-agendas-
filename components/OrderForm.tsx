@@ -3,16 +3,17 @@ import React, { useState } from 'react';
 import { Order } from '../types';
 
 interface OrderFormProps {
-    onSubmit: (data: Omit<Order, 'id' | 'status' | 'createdAt'>) => void;
+    onSubmit: (data: Omit<Order, 'id' | 'status' | 'paid' | 'createdAt'>) => void;
     onCancel: () => void;
+    initialData?: Order;
 }
 
-const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel }) => {
-    const [clientName, setClientName] = useState('');
-    const [productType, setProductType] = useState('');
-    const [value, setValue] = useState('');
-    const [details, setDetails] = useState('');
-    const [deliveryDate, setDeliveryDate] = useState('');
+const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel, initialData }) => {
+    const [clientName, setClientName] = useState(initialData?.clientName || '');
+    const [productType, setProductType] = useState(initialData?.productType || '');
+    const [value, setValue] = useState(initialData?.value?.toString() || '');
+    const [details, setDetails] = useState(initialData?.details || '');
+    const [deliveryDate, setDeliveryDate] = useState(initialData?.deliveryDate || '');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -102,7 +103,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel }) => {
                     type="submit"
                     className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-200 transition-all active:scale-95"
                 >
-                    Guardar Pedido
+                    {initialData ? 'Actualizar Pedido' : 'Guardar Pedido'}
                 </button>
             </div>
         </form>
