@@ -14,14 +14,21 @@ export const sheetService = {
             if (!response.ok) return [];
             const data = await response.json();
             // Mapeamos claves en minúsculas del Apps Script a camelCase
-            return data.map((t: any) => ({
-                id: t.id,
-                type: t.type,
-                amount: Number(t.amount),
-                description: t.description,
-                category: t.category,
-                date: t.date
-            }));
+            return data.map((t: any) => {
+                const rawType = String(t.type || '').toUpperCase();
+                let normalizedType = rawType;
+                if (rawType.startsWith('VENTA') || rawType.startsWith('INGRE')) normalizedType = 'VENTA';
+                else if (rawType.startsWith('GAST') || rawType.startsWith('EGRE') || rawType.startsWith('COMPR')) normalizedType = 'GASTO';
+
+                return {
+                    id: String(t.id),
+                    type: normalizedType as 'VENTA' | 'GASTO',
+                    amount: typeof t.amount === 'number' ? t.amount : Number(String(t.amount || '0').replace(/[^\d-]/g, '')),
+                    description: t.description,
+                    category: t.category,
+                    date: t.date
+                };
+            });
         } catch (error) {
             console.error('Error in getTransactions:', error);
             return [];
@@ -62,14 +69,14 @@ export const sheetService = {
             const data = await response.json();
             // Mapeamos las claves en minúsculas del Apps Script a las camelCase de TypeScript
             return data.map((o: any) => ({
-                id: o.id,
+                id: String(o.id),
                 clientName: o.clientname,
                 productType: o.producttype,
-                value: Number(o.value),
+                value: typeof o.value === 'number' ? o.value : Number(String(o.value || '0').replace(/[^\d-]/g, '')),
                 details: o.details,
                 deliveryDate: o.deliverydate,
                 status: o.status,
-                paid: o.paid,
+                paid: o.paid === true || String(o.paid).toLowerCase() === 'true',
                 createdAt: o.createdat
             }));
         } catch (error) {
