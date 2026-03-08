@@ -1,6 +1,7 @@
 import { Transaction, Order, Material, ProductConfig, InventoryLog } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbztGCKg5Sqz2Bl7QqSecB_4JXyTHK_vNWXHbm4hL5egDs5WfWMG2UWCHrcMDE_rRq-I/exec';
+const ORDERS_API_URL = 'https://script.google.com/macros/s/AKfycbxLE10gKyrvFiS0UjF1MoOUOPjXb91V-SBTSDZ_NdpeCLD4uEU_7vZvxdqXUG3BEi-G/exec';
 
 export const sheetService = {
     // ---------------- TRANSACTIONS ----------------
@@ -74,7 +75,7 @@ export const sheetService = {
     // ---------------- ORDERS ----------------
     async getOrders(): Promise<Order[]> {
         try {
-            const response = await fetch(API_URL, {
+            const response = await fetch(ORDERS_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ action: 'getOrders' }),
@@ -111,7 +112,7 @@ export const sheetService = {
                 paid: order.paid,
                 createdat: order.createdAt
             };
-            const response = await fetch(API_URL, {
+            const response = await fetch(ORDERS_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ action: 'addOrder', data: dataToSave }),
@@ -136,7 +137,7 @@ export const sheetService = {
                 paid: order.paid,
                 createdat: order.createdAt
             };
-            const response = await fetch(API_URL, {
+            const response = await fetch(ORDERS_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ action: 'updateOrder', data: dataToSave }),
@@ -151,7 +152,7 @@ export const sheetService = {
     async deleteOrder(id: string): Promise<boolean> {
         try {
             const idToSend = /^\d+$/.test(id) ? Number(id) : id;
-            const response = await fetch(API_URL, {
+            const response = await fetch(ORDERS_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ action: 'deleteOrder', data: { id: idToSend } }),

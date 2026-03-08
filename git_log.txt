@@ -1,0 +1,2548 @@
+commit d3255ca530d9c16cbf3726d47cb355f45c099ad1
+Author: Your Name <you@example.com>
+Date:   Sun Mar 8 01:31:40 2026 -0300
+
+    Sistema de Inventario, Alertas y Dashboard Ejecutivo 2025
+
+diff --git a/App.tsx b/App.tsx
+index 17e6a63..aba601a 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -1,20 +1,24 @@
+ 
+ import React, { useState, useEffect } from 'react';
+-import { Transaction, Order, BusinessState } from './types';
++import { Transaction, Order, BusinessState, Material, ProductConfig, InventoryLog } from './types';
+ import Dashboard from './components/Dashboard';
++import Catalog from './components/Catalog';
++import Inventory from './components/Inventory';
+ import TransactionForm from './components/TransactionForm';
+ import TransactionTable from './components/TransactionTable';
+ import Insights from './components/Insights';
+ import OrderForm from './components/OrderForm';
+ import OrderTable from './components/OrderTable';
++import InventoryAlertModal from './components/InventoryAlertModal';
+ import { PremiumBackground as InfiniteGrid } from './components/ui/infinite-grid-integration';
+ import { sheetService } from './services/sheetService';
+ 
+ const App: React.FC = () => {
+-  const [state, setState] = useState<BusinessState>({ transactions: [], orders: [] });
++  const [state, setState] = useState<BusinessState>({ transactions: [], orders: [], materials: [], products: [], inventoryLogs: [] });
+   const [loading, setLoading] = useState(true);
+-  const [view, setView] = useState<'dashboard' | 'transactions' | 'orders'>('dashboard');
++  const [view, setView] = useState<'dashboard' | 'transactions' | 'orders' | 'catalog' | 'inventory'>('dashboard');
+   const [modalType, setModalType] = useState<'transaction' | 'order' | null>(null);
++  const [showInventoryAlerts, setShowInventoryAlerts] = useState(false);
+   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+ 
+@@ -25,14 +29,20 @@ const App: React.FC = () => {
+     const loadData = async () => {
+       setLoading(true);
+       try {
+-        const [transactions, orders] = await Promise.all([
++        const [transactions, orders, materials, products, logs] = await Promise.all([
+           sheetService.getTransactions(),
+-          sheetService.getOrders()
++          sheetService.getOrders(),
++          sheetService.getMaterials(),
++          sheetService.getProducts(),
++          sheetService.getInventoryLogs()
+         ]);
+ 
+         setState({
+           transactions: transactions || [],
+-          orders: orders || []
++          orders: orders || [],
++          materials: materials || [],
++          products: products || [],
++          inventoryLogs: logs || []
+         });
+       } catch (error) {
+         console.error("Error loading data:", error);
+@@ -175,6 +185,16 @@ const App: React.FC = () => {
+     const order = state.orders.find(o => o.id === orderId);
+     if (!order || processingIds.has(orderId)) return;
+ 
++    // ----- LOGICA INVENTARIO AUTOMÁTICO -----
++    if (order.status !== 'ENTREGADO' && newStatus === 'ENTREGADO') {
++      const product = state.products.find(p => p.name === order.productType);
++      if (product) {
++        for (const mat of product.materials) {
++          await removeStock(mat.materialId, mat.quantity, `Uso en Pedido (Producto: ${product.name})`);
++        }
++      }
++    }
++
+     setProcessingIds(prev => new Set(prev).add(orderId));
+     const updatedOrder = { ...order, status: newStatus };
+ 
+@@ -231,6 +251,96 @@ const App: React.FC = () => {
+     }
+   };
+ 
++  // ---------------- CATALOG ACTIONS ----------------
++  const addMaterial = async (m: Omit<Material, 'id'>) => {
++    const id = crypto.randomUUID();
++    const newMat = { ...m, id };
++    setState(prev => ({ ...prev, materials: [...prev.materials, newMat] }));
++    await sheetService.addMaterial(newMat);
++  };
++
++  const updateMaterial = async (m: Material) => {
++    setState(prev => ({
++      ...prev, materials: prev.materials.map(x => x.id === m.id ? m : x)
++    }));
++    await sheetService.updateMaterial(m);
++  };
++
++  const deleteMaterial = async (id: string) => {
++    setState(prev => ({
++      ...prev, materials: prev.materials.filter(x => x.id !== id)
++    }));
++    await sheetService.deleteMaterial(id);
++  };
++
++  const addProduct = async (p: Omit<ProductConfig, 'id'>) => {
++    const id = crypto.randomUUID();
++    const newProd = { ...p, id };
++    setState(prev => ({ ...prev, products: [...prev.products, newProd] }));
++    await sheetService.addProduct(newProd);
++  };
++
++  const updateProduct = async (p: ProductConfig) => {
++    setState(prev => ({
++      ...prev, products: prev.products.map(x => x.id === p.id ? p : x)
++    }));
++    await sheetService.updateProduct(p);
++  };
++
++  const deleteProduct = async (id: string) => {
++    setState(prev => ({
++      ...prev, products: prev.products.filter(x => x.id !== id)
++    }));
++    await sheetService.deleteProduct(id);
++  };
++
++  // ---------------- INVENTORY ACTIONS ----------------
++  const addStock = async (materialId: string, quantity: number, cost: number, registerExpense: boolean) => {
++    const logId = crypto.randomUUID();
++    const log: InventoryLog = {
++      id: logId,
++      date: new Date().toISOString(),
++      materialId,
++      quantityChange: quantity,
++      reason: 'Compra / Reabastecimiento'
++    };
++
++    setState(prev => {
++      const mats = prev.materials.map(m => m.id === materialId ? { ...m, quantity: m.quantity + quantity } : m);
++      return { ...prev, materials: mats, inventoryLogs: [log, ...prev.inventoryLogs] };
++    });
++
++    await sheetService.addInventoryLog(log);
++
++    if (registerExpense && cost > 0) {
++      await addTransaction({
++        type: 'GASTO',
++        amount: cost,
++        description: `Compra insumos (Inventario)`,
++        category: 'Papelería/Insumos',
++        date: new Date().toISOString().split('T')[0]
++      });
++    }
++  };
++
++  const removeStock = async (materialId: string, quantity: number, reason: string) => {
++    const logId = crypto.randomUUID();
++    const log: InventoryLog = {
++      id: logId,
++      date: new Date().toISOString(),
++      materialId,
++      quantityChange: -Math.abs(quantity),
++      reason
++    };
++
++    setState(prev => {
++      const mats = prev.materials.map(m => m.id === materialId ? { ...m, quantity: m.quantity - Math.abs(quantity) } : m);
++      return { ...prev, materials: mats, inventoryLogs: [log, ...prev.inventoryLogs] };
++    });
++
++    await sheetService.addInventoryLog(log);
++  };
++
+   return (
+     <div className="min-h-screen relative overflow-hidden bg-background">
+       <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
+@@ -249,13 +359,35 @@ const App: React.FC = () => {
+               </div>
+               <h1 className="text-xl font-bold text-slate-800">Agendes Yeca <span className="text-rose-500">2025</span></h1>
+             </div>
+-            <nav className="flex gap-1 bg-slate-100 p-1 rounded-full">
++            <nav className="flex gap-1 bg-slate-100 p-1 rounded-full items-center">
+               <button
+                 onClick={() => setView('dashboard')}
+                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'dashboard' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+               >
+                 Resumen
+               </button>
++              <button
++                onClick={() => setShowInventoryAlerts(true)}
++                className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white shadow-md shadow-rose-200 hover:bg-rose-600 transition-all active:scale-95"
++              >
++                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
++                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
++                </svg>
++                Alertas Stock
++              </button>
++              <div className="w-px h-6 bg-slate-300 mx-1"></div>
++              <button
++                onClick={() => setView('catalog')}
++                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'catalog' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
++              >
++                Catálogo y Costos
++              </button>
++              <button
++                onClick={() => setView('inventory')}
++                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'inventory' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
++              >
++                Inventario
++              </button>
+               <button
+                 onClick={() => setView('transactions')}
+                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'transactions' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+@@ -311,7 +443,7 @@ const App: React.FC = () => {
+           ) : (
+             view === 'dashboard' ? (
+               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+-                <Dashboard transactions={state.transactions} />
++                <Dashboard transactions={state.transactions} orders={state.orders} />
+                 <Insights transactions={state.transactions} />
+               </div>
+             ) : view === 'transactions' ? (
+@@ -321,6 +453,28 @@ const App: React.FC = () => {
+                   onDelete={deleteTransaction}
+                 />
+               </div>
++            ) : view === 'catalog' ? (
++              <div className="animate-in fade-in duration-500">
++                <Catalog
++                  materials={state.materials}
++                  products={state.products}
++                  onAddMaterial={addMaterial}
++                  onUpdateMaterial={updateMaterial}
++                  onDeleteMaterial={deleteMaterial}
++                  onAddProduct={addProduct}
++                  onUpdateProduct={updateProduct}
++                  onDeleteProduct={deleteProduct}
++                />
++              </div>
++            ) : view === 'inventory' ? (
++              <div className="animate-in fade-in duration-500">
++                <Inventory
++                  materials={state.materials}
++                  logs={state.inventoryLogs}
++                  onAddStock={addStock}
++                  onRemoveStock={removeStock}
++                />
++              </div>
+             ) : (
+               <div className="animate-in fade-in duration-500">
+                 <OrderTable
+@@ -393,6 +547,7 @@ const App: React.FC = () => {
+                   <TransactionForm onSubmit={addTransaction} onCancel={() => setModalType(null)} />
+                 ) : (
+                   <OrderForm
++                    products={state.products}
+                     onSubmit={(data) => {
+                       if (editingOrder) {
+                         updateOrder({ ...editingOrder, ...data });
+@@ -409,6 +564,15 @@ const App: React.FC = () => {
+             </div>
+           </div>
+         )}
++
++        {/* Inventory Alert Modal */}
++        {showInventoryAlerts && (
++          <InventoryAlertModal
++            materials={state.materials}
++            products={state.products}
++            onClose={() => setShowInventoryAlerts(false)}
++          />
++        )}
+       </div>
+     </div>
+   );
+diff --git a/components/Catalog.tsx b/components/Catalog.tsx
+new file mode 100644
+index 0000000..5bbe2a3
+--- /dev/null
++++ b/components/Catalog.tsx
+@@ -0,0 +1,405 @@
++import React, { useState } from 'react';
++import { Material, ProductConfig } from '../types';
++import { Plus, Trash2, Edit, Save, X, PackageOpen, Calculator, Info } from 'lucide-react';
++
++interface CatalogProps {
++    materials: Material[];
++    products: ProductConfig[];
++    onAddMaterial: (m: Omit<Material, 'id'>) => Promise<void>;
++    onUpdateMaterial: (m: Material) => Promise<void>;
++    onDeleteMaterial: (id: string) => Promise<void>;
++    onAddProduct: (p: Omit<ProductConfig, 'id'>) => Promise<void>;
++    onUpdateProduct: (p: ProductConfig) => Promise<void>;
++    onDeleteProduct: (id: string) => Promise<void>;
++}
++
++export default function Catalog({
++    materials,
++    products,
++    onAddMaterial,
++    onUpdateMaterial,
++    onDeleteMaterial,
++    onAddProduct,
++    onUpdateProduct,
++    onDeleteProduct
++}: CatalogProps) {
++    const [activeTab, setActiveTab] = useState<'materials' | 'products'>('materials');
++
++    // States for Material Form
++    const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
++    const [showMaterialForm, setShowMaterialForm] = useState(false);
++    const [matName, setMatName] = useState('');
++    const [matUnit, setMatUnit] = useState('Unidad');
++    const [matCost, setMatCost] = useState('');
++
++    // States for Product Form
++    const [editingProduct, setEditingProduct] = useState<ProductConfig | null>(null);
++    const [showProductForm, setShowProductForm] = useState(false);
++    const [prodName, setProdName] = useState('');
++    const [prodProfitMargin, setProdProfitMargin] = useState('70'); // Default 70% as in excel
++    const [prodMaterials, setProdMaterials] = useState<{ materialId: string, quantity: number }[]>([]);
++
++    // ---------------- MATERIALS ----------------
++    const handleSaveMaterial = async () => {
++        if (!matName || !matCost) return;
++        const materialData = {
++            name: matName,
++            unit: matUnit,
++            costPerUnit: Number(matCost),
++            quantity: editingMaterial ? editingMaterial.quantity : 0,
++            minWarning: 0
++        };
++
++        if (editingMaterial) {
++            await onUpdateMaterial({ ...editingMaterial, ...materialData });
++        } else {
++            await onAddMaterial(materialData);
++        }
++
++        setShowMaterialForm(false);
++        setEditingMaterial(null);
++        setMatName('');
++        setMatCost('');
++    };
++
++    const openMaterialForm = (m?: Material) => {
++        if (m) {
++            setEditingMaterial(m);
++            setMatName(m.name);
++            setMatUnit(m.unit);
++            setMatCost(String(m.costPerUnit));
++        } else {
++            setEditingMaterial(null);
++            setMatName('');
++            setMatUnit('Unidad');
++            setMatCost('');
++        }
++        setShowMaterialForm(true);
++    };
++
++    // ---------------- PRODUCTS ----------------
++    const calculateProdCost = () => {
++        return prodMaterials.reduce((total, pm) => {
++            const mat = materials.find(m => m.id === pm.materialId);
++            if (mat) return total + (mat.costPerUnit * pm.quantity);
++            return total;
++        }, 0);
++    };
++
++    const handleSaveProduct = async () => {
++        if (!prodName || prodMaterials.length === 0) return;
++
++        const productionCost = calculateProdCost();
++        const margin = Number(prodProfitMargin) / 100;
++        // Prevent division by zero if margin is >= 100
++        const salePrice = margin >= 1 ? productionCost * (1 + margin) : Math.round(productionCost / (1 - margin));
++
++        const productData = {
++            name: prodName,
++            materials: prodMaterials,
++            productionCost,
++            profitMargin: Number(prodProfitMargin),
++            salePrice
++        };
++
++        if (editingProduct) {
++            await onUpdateProduct({ ...editingProduct, ...productData });
++        } else {
++            await onAddProduct(productData);
++        }
++
++        setShowProductForm(false);
++        setEditingProduct(null);
++        setProdName('');
++        setProdMaterials([]);
++        setProdProfitMargin('70');
++    };
++
++    const openProductForm = (p?: ProductConfig) => {
++        if (p) {
++            setEditingProduct(p);
++            setProdName(p.name);
++            setProdMaterials(p.materials);
++            setProdProfitMargin(String(p.profitMargin));
++        } else {
++            setEditingProduct(null);
++            setProdName('');
++            setProdMaterials([]);
++            setProdProfitMargin('70');
++        }
++        setShowProductForm(true);
++    };
++
++    const toggleMaterialInProduct = (matId: string) => {
++        const existing = prodMaterials.find(pm => pm.materialId === matId);
++        if (existing) {
++            setProdMaterials(prodMaterials.filter(pm => pm.materialId !== matId));
++        } else {
++            setProdMaterials([...prodMaterials, { materialId: matId, quantity: 1 }]);
++        }
++    };
++
++    const updateProductMaterialQty = (matId: string, qty: number) => {
++        setProdMaterials(prodMaterials.map(pm => pm.materialId === matId ? { ...pm, quantity: qty } : pm));
++    };
++
++
++    return (
++        <div className="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-slate-100 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
++
++            {/* Header and Tabs */}
++            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-slate-100 pb-6">
++                <div>
++                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
++                        <Calculator className="text-rose-500" />
++                        Catálogo y Costos
++                    </h2>
++                    <p className="text-slate-500 text-sm mt-1">Configura tus insumos y calcula precios de venta automáticamente.</p>
++                </div>
++
++                <div className="flex bg-slate-100 p-1.5 rounded-xl">
++                    <button
++                        onClick={() => setActiveTab('materials')}
++                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'materials' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
++                    >
++                        1. Insumos
++                    </button>
++                    <button
++                        onClick={() => setActiveTab('products')}
++                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'products' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
++                    >
++                        2. Recetas (Productos)
++                    </button>
++                </div>
++            </div>
++
++            {/* MATERIALS TAB */}
++            {activeTab === 'materials' && (
++                <div className="animate-in fade-in duration-300">
++                    <div className="flex justify-between items-center mb-6">
++                        <h3 className="text-lg font-bold text-slate-700">Tus Materiales Base</h3>
++                        <button
++                            onClick={() => openMaterialForm()}
++                            className="flex items-center gap-2 bg-rose-50 text-rose-600 hover:bg-rose-100 px-4 py-2 rounded-xl font-bold transition-colors text-sm"
++                        >
++                            <Plus size={16} /> Nuevo Insumo
++                        </button>
++                    </div>
++
++                    {showMaterialForm && (
++                        <div className="bg-slate-50 p-6 rounded-2xl mb-6 border border-slate-200">
++                            <h4 className="font-bold text-slate-700 mb-4">{editingMaterial ? 'Editar' : 'Agregar'} Insumo</h4>
++                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
++                                <div>
++                                    <label className="block text-xs font-bold text-slate-500 mb-1">Nombre</label>
++                                    <input type="text" value={matName} onChange={(e) => setMatName(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none" placeholder="Ej: Laminado frío corazón" />
++                                </div>
++                                <div>
++                                    <label className="block text-xs font-bold text-slate-500 mb-1">Medida</label>
++                                    <input type="text" value={matUnit} onChange={(e) => setMatUnit(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none" placeholder="Ej: Hoja, Metro, Tira" />
++                                </div>
++                                <div>
++                                    <label className="block text-xs font-bold text-slate-500 mb-1">Costo ($ por medida)</label>
++                                    <input type="number" value={matCost} onChange={(e) => setMatCost(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none" placeholder="Ej: 500" />
++                                </div>
++                            </div>
++                            <div className="flex justify-end gap-3">
++                                <button onClick={() => setShowMaterialForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-700 font-bold text-sm">Cancelar</button>
++                                <button onClick={handleSaveMaterial} disabled={!matName || !matCost} className="flex items-center gap-2 bg-slate-800 text-white px-6 py-2 rounded-xl font-bold hover:bg-slate-900 transition-colors disabled:opacity-50 text-sm">
++                                    <Save size={16} /> Guardar Insumo
++                                </button>
++                            </div>
++                        </div>
++                    )}
++
++                    {materials.length === 0 && !showMaterialForm ? (
++                        <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
++                            <PackageOpen className="mx-auto mb-2 opacity-50" size={32} />
++                            <p>Aún no has agregado materias primas.</p>
++                        </div>
++                    ) : (
++                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
++                            {materials.map(m => (
++                                <div key={m.id} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between">
++                                    <div>
++                                        <h5 className="font-bold text-slate-800">{m.name}</h5>
++                                        <p className="text-rose-600 font-bold mt-1 text-lg">${Number(m.costPerUnit).toLocaleString()} <span className="text-xs text-slate-400 font-normal">/ {m.unit}</span></p>
++                                    </div>
++                                    <div className="flex justify-end gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
++                                        <button title="Editar" onClick={() => openMaterialForm(m)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"><Edit size={14} /></button>
++                                        <button title="Eliminar" onClick={() => confirm('¿Eliminar insumo?') && onDeleteMaterial(m.id)} className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100"><Trash2 size={14} /></button>
++                                    </div>
++                                </div>
++                            ))}
++                        </div>
++                    )}
++                </div>
++            )}
++
++            {/* PRODUCTS TAB */}
++            {activeTab === 'products' && (
++                <div className="animate-in fade-in duration-300">
++                    <div className="flex justify-between items-center mb-6">
++                        <h3 className="text-lg font-bold text-slate-700">Catálogo de Productos</h3>
++                        <button
++                            onClick={() => openProductForm()}
++                            className="flex items-center gap-2 bg-rose-50 text-rose-600 hover:bg-rose-100 px-4 py-2 rounded-xl font-bold transition-colors text-sm"
++                            disabled={materials.length === 0}
++                        >
++                            <Plus size={16} /> Crear Producto
++                        </button>
++                    </div>
++
++                    {materials.length === 0 && (
++                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-amber-700 flex gap-3 text-sm mb-6">
++                            <Info className="shrink-0" size={20} />
++                            <p>Primero debes agregar <strong>Insumos</strong> en la pestaña anterior para poder armar las recetas de tus productos.</p>
++                        </div>
++                    )}
++
++                    {showProductForm && (
++                        <div className="bg-slate-50 p-6 rounded-2xl mb-6 border border-slate-200">
++                            <div className="flex justify-between items-center mb-4">
++                                <h4 className="font-bold text-slate-700">{editingProduct ? 'Editar' : 'Armar Nuevo'} Producto</h4>
++                                <button title="Cerrar" onClick={() => setShowProductForm(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
++                            </div>
++
++                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
++                                <div>
++                                    <label className="block text-xs font-bold text-slate-500 mb-1">Nombre del Producto</label>
++                                    <input type="text" value={prodName} onChange={(e) => setProdName(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none" placeholder="Ej: Agenda Personalizada A5" />
++                                </div>
++                                <div>
++                                    <label className="block text-xs font-bold text-slate-500 mb-1">Porcentaje de Ganancia (%)</label>
++                                    <input type="number" value={prodProfitMargin} onChange={(e) => setProdProfitMargin(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none" placeholder="Ej: 70" />
++                                </div>
++                            </div>
++
++                            <div className="mb-6">
++                                <label className="block text-xs font-bold text-slate-500 mb-3">Materiales utilizados (Receta)</label>
++
++                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
++                                    {/* Material Selection List */}
++                                    <div className="bg-white border border-slate-200 rounded-xl p-3 max-h-60 overflow-y-auto">
++                                        {materials.map(m => {
++                                            const isSelected = prodMaterials.some(pm => pm.materialId === m.id);
++                                            return (
++                                                <div key={m.id} onClick={() => toggleMaterialInProduct(m.id)} className={`flex justify-between items-center p-2 rounded-lg cursor-pointer mb-1 transition-colors ${isSelected ? 'bg-rose-50 border border-rose-200' : 'hover:bg-slate-50 border border-transparent'}`}>
++                                                    <div>
++                                                        <p className={`text-sm font-bold ${isSelected ? 'text-rose-700' : 'text-slate-700'}`}>{m.name}</p>
++                                                        <p className="text-[10px] text-slate-400">${m.costPerUnit} / {m.unit}</p>
++                                                    </div>
++                                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${isSelected ? 'border-rose-500 bg-rose-500 text-white' : 'border-slate-300'}`}>
++                                                        {isSelected && <Check size={12} />}
++                                                    </div>
++                                                </div>
++                                            )
++                                        })}
++                                    </div>
++
++                                    {/* Quantities & Formula Preview */}
++                                    <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
++                                        <div>
++                                            <h5 className="text-sm font-bold text-slate-700 mb-3">Cantidades</h5>
++                                            {prodMaterials.length === 0 ? (
++                                                <p className="text-xs text-slate-400 italic">Selecciona materiales a la izquierda.</p>
++                                            ) : (
++                                                <div className="space-y-3 max-h-40 overflow-y-auto">
++                                                    {prodMaterials.map(pm => {
++                                                        const mat = materials.find(m => m.id === pm.materialId);
++                                                        if (!mat) return null;
++                                                        return (
++                                                            <div key={pm.materialId} className="flex items-center justify-between gap-3 text-sm">
++                                                                <span className="text-slate-600 truncate flex-1">{mat.name}</span>
++                                                                <div className="flex items-center gap-2">
++                                                                    <input aria-label="Cantidad" type="number" min="0.1" step="any" value={pm.quantity} onChange={(e) => updateProductMaterialQty(pm.materialId, Number(e.target.value))} className="w-16 border border-slate-200 rounded px-2 py-1 text-center" />
++                                                                    <span className="text-xs text-slate-400 w-8">{mat.unit}</span>
++                                                                </div>
++                                                            </div>
++                                                        );
++                                                    })}
++                                                </div>
++                                            )}
++                                        </div>
++
++                                        {prodMaterials.length > 0 && (
++                                            <div className="mt-4 pt-4 border-t border-slate-100">
++                                                <div className="flex justify-between text-sm mb-1">
++                                                    <span className="text-slate-500 font-medium">Costo Producción:</span>
++                                                    <span className="font-bold text-slate-700">${Math.round(calculateProdCost()).toLocaleString()}</span>
++                                                </div>
++                                                <div className="flex justify-between text-sm mb-1">
++                                                    <span className="text-slate-500 font-medium">+ Ganancia ({prodProfitMargin}%):</span>
++                                                    <span className="font-bold text-emerald-600">${Math.round(calculateProdCost() * (Number(prodProfitMargin) / 100)).toLocaleString()}</span>
++                                                </div>
++                                                <div className="flex justify-between text-lg mt-2 pt-2 border-t border-slate-100">
++                                                    <span className="text-slate-800 font-black">Precio Sugerido:</span>
++                                                    <span className="font-black text-rose-600">
++                                                        ${Math.round(calculateProdCost() / (1 - (Number(prodProfitMargin) / 100))).toLocaleString()}
++                                                    </span>
++                                                </div>
++                                            </div>
++                                        )}
++                                    </div>
++                                </div>
++                            </div>
++
++                            <div className="flex justify-end gap-3">
++                                <button onClick={handleSaveProduct} disabled={!prodName || prodMaterials.length === 0} className="flex items-center gap-2 bg-rose-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200 disabled:opacity-50 text-sm">
++                                    <Save size={16} /> Guardar Producto
++                                </button>
++                            </div>
++                        </div>
++                    )}
++
++                    {products.length === 0 && !showProductForm ? (
++                        <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
++                            <Calculator className="mx-auto mb-2 opacity-50" size={32} />
++                            <p>Aún no has creado productos. Agrega una receta.</p>
++                        </div>
++                    ) : (
++                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
++                            {products.map(p => (
++                                <div key={p.id} className="bg-white border border-slate-100 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow group">
++                                    <div className="flex justify-between mb-4">
++                                        <div>
++                                            <h5 className="font-bold text-lg text-slate-800">{p.name}</h5>
++                                            <span className="inline-block bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1.5 uppercase tracking-wide">Ganancia: {p.profitMargin}%</span>
++                                        </div>
++                                        <div className="text-right">
++                                            <p className="text-[10px] text-slate-400 font-bold uppercase">Precio Sugerido</p>
++                                            <p className="font-black text-2xl text-slate-800">${p.salePrice.toLocaleString()}</p>
++                                        </div>
++                                    </div>
++
++                                    <div className="bg-slate-50 rounded-xl p-3 mb-4">
++                                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Costos Estimados</p>
++                                        <div className="flex justify-between items-end">
++                                            <p className="font-bold text-slate-600">${Math.round(p.productionCost).toLocaleString()}</p>
++                                            <p className="text-xs text-emerald-600 font-bold">Utilidad: ${(p.salePrice - p.productionCost).toLocaleString()}</p>
++                                        </div>
++                                    </div>
++
++                                    <div className="flex justify-between items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
++                                        <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-md font-medium">{p.materials.length} Insumos en la receta</span>
++                                        <div className="flex gap-2">
++                                            <button title="Editar" onClick={() => openProductForm(p)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"><Edit size={16} /></button>
++                                            <button title="Eliminar" onClick={() => confirm('¿Eliminar producto?') && onDeleteProduct(p.id)} className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors"><Trash2 size={16} /></button>
++                                        </div>
++                                    </div>
++                                </div>
++                            ))}
++                        </div>
++                    )}
++
++                </div>
++            )}
++
++        </div>
++    );
++}
++
++// Pequeño Icono faltante exportado globalmente arriba, lo agrego aquí para limpieza
++const Check = ({ size }: { size: number }) => (
++    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
++);
+diff --git a/components/Dashboard.tsx b/components/Dashboard.tsx
+index 6226eed..e23c663 100644
+--- a/components/Dashboard.tsx
++++ b/components/Dashboard.tsx
+@@ -1,36 +1,82 @@
+ 
+ import React, { useState } from 'react';
+-import { Transaction } from '../types';
+-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
++import { Transaction, Order } from '../types';
++import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, LineChart, Line } from 'recharts';
+ import { generateEmailReport } from '../services/geminiService';
++import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Package, FileText, ArrowUpRight } from 'lucide-react';
+ 
+ interface DashboardProps {
+   transactions: Transaction[];
++  orders: Order[];
+ }
+ 
+-const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
++const Dashboard: React.FC<DashboardProps> = ({ transactions, orders }) => {
+   const [isGenerating, setIsGenerating] = useState(false);
+ 
+   const stats = React.useMemo(() => {
+     const sales = transactions.filter(t => t.type === 'VENTA').reduce((acc, curr) => acc + curr.amount, 0);
+     const expenses = transactions.filter(t => t.type === 'GASTO').reduce((acc, curr) => acc + curr.amount, 0);
++    const pendingOrders = orders.filter(o => o.status === 'PENDIENTE').length;
++    const deliveredOrders = orders.filter(o => o.status === 'ENTREGADO').length;
++
+     return {
+       sales,
+       expenses,
+-      profit: sales - expenses
++      profit: sales - expenses,
++      pendingOrders,
++      deliveredOrders
+     };
++  }, [transactions, orders]);
++
++  const monthlyData = React.useMemo(() => {
++    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
++    const currentYear = new Date().getFullYear();
++
++    const data = months.map((month, idx) => ({
++      name: month,
++      ventas: 0,
++      gastos: 0,
++      balance: 0
++    }));
++
++    transactions.forEach(t => {
++      const date = new Date(t.date);
++      if (date.getFullYear() === currentYear) {
++        const mIdx = date.getMonth();
++        if (t.type === 'VENTA') data[mIdx].ventas += t.amount;
++        else data[mIdx].gastos += t.amount;
++        data[mIdx].balance = data[mIdx].ventas - data[mIdx].gastos;
++      }
++    });
++
++    return data;
+   }, [transactions]);
+ 
++  const topProducts = React.useMemo(() => {
++    const counts: Record<string, { count: number, revenue: number }> = {};
++    orders.forEach(o => {
++      if (!counts[o.productType]) counts[o.productType] = { count: 0, revenue: 0 };
++      counts[o.productType].count++;
++      counts[o.productType].revenue += o.value;
++    });
++    return Object.entries(counts)
++      .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue }))
++      .sort((a, b) => b.count - a.count)
++      .slice(0, 5);
++  }, [orders]);
++
++  const COLORS = ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#64748b'];
++
+   const handleSendReport = async () => {
+     if (transactions.length === 0) return;
+-    
++
+     setIsGenerating(true);
+     try {
+       const reportContent = await generateEmailReport(transactions);
+       const email = 'profeyeca2021@gmail.com';
+       const subject = encodeURIComponent('Reporte Contable - Agendes Yeca 2025');
+       const body = encodeURIComponent(reportContent);
+-      
++
+       window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+     } catch (error) {
+       alert("Hubo un error al preparar el reporte.");
+@@ -39,118 +85,186 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
+     }
+   };
+ 
+-  const chartData = React.useMemo(() => {
+-    return [
+-      { name: 'Ventas', value: stats.sales, color: '#f43f5e' },
+-      { name: 'Gastos', value: stats.expenses, color: '#64748b' }
+-    ];
+-  }, [stats]);
+-
+-  const expenseData = React.useMemo(() => {
+-    const groups: Record<string, number> = {};
+-    transactions.filter(t => t.type === 'GASTO').forEach(t => {
+-      groups[t.category] = (groups[t.category] || 0) + t.amount;
+-    });
+-    return Object.entries(groups).map(([name, value]) => ({ name, value }));
+-  }, [transactions]);
+-
+-  const COLORS = ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#64748b'];
+-
+   return (
+-    <div className="space-y-6">
+-      {/* Header with Report Action */}
+-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
++    <div className="space-y-8 pb-10">
++      {/* Executive Header */}
++      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-1">
+         <div>
+-          <h2 className="text-2xl font-bold text-slate-800">Panel de Control</h2>
+-          <p className="text-slate-500 text-sm">Resumen financiero de Agendes Yeca 2025</p>
++          <h2 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
++            Dashboard Ejecutivo
++            <span className="bg-rose-100 text-rose-600 text-xs px-2 py-1 rounded-full uppercase tracking-widest font-bold">2025</span>
++          </h2>
++          <p className="text-slate-500 font-medium mt-1">Análisis profundo y estado financiero del negocio.</p>
++        </div>
++
++        <div className="flex gap-2">
++          <button
++            onClick={handleSendReport}
++            disabled={isGenerating || transactions.length === 0}
++            className="flex items-center gap-3 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-xl shadow-slate-200 active:scale-95 disabled:opacity-50"
++          >
++            {isGenerating ? (
++              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
++            ) : <FileText size={20} />}
++            {isGenerating ? 'Generando...' : 'Reporte Contable'}
++          </button>
+         </div>
+-        <button
+-          onClick={handleSendReport}
+-          disabled={isGenerating || transactions.length === 0}
+-          className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-slate-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+-        >
+-          {isGenerating ? (
+-            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+-            </svg>
+-          ) : (
+-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+-            </svg>
+-          )}
+-          {isGenerating ? 'Generando Reporte...' : 'Enviar Reporte al Correo'}
+-        </button>
+       </div>
+ 
+-      {/* Stats Cards */}
+-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+-        <div className="bg-white p-6 rounded-2xl border border-rose-100 shadow-sm">
+-          <p className="text-sm font-medium text-rose-500 mb-1">Total Ventas</p>
+-          <h3 className="text-3xl font-bold text-slate-800">${stats.sales.toLocaleString()}</h3>
++      {/* KPI Overlays */}
++      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
++        {/* Balance Card - Premium */}
++        <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group">
++          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
++            <DollarSign size={80} />
++          </div>
++          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Balance General</p>
++          <h3 className="text-3xl font-black mb-4">${stats.profit.toLocaleString()}</h3>
++          <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold bg-white/5 w-fit px-2 py-1 rounded-lg">
++            <TrendingUp size={14} />
++            Negocio Saludable
++          </div>
++        </div>
++
++        {/* Sales Card */}
++        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
++          <div className="flex justify-between items-start mb-4">
++            <div className="p-3 bg-rose-50 text-rose-500 rounded-2xl">
++              <ShoppingBag size={24} />
++            </div>
++            <span className="text-emerald-500 font-bold text-xs flex items-center">+ Ingresos</span>
++          </div>
++          <div>
++            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Ventas Totales</p>
++            <h3 className="text-2xl font-black text-slate-800">${stats.sales.toLocaleString()}</h3>
++          </div>
++        </div>
++
++        {/* Expenses Card */}
++        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
++          <div className="flex justify-between items-start mb-4">
++            <div className="p-3 bg-slate-50 text-slate-500 rounded-2xl">
++              <TrendingDown size={24} />
++            </div>
++            <span className="text-rose-400 font-bold text-xs flex items-center">- Gastos</span>
++          </div>
++          <div>
++            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Egresos Totales</p>
++            <h3 className="text-2xl font-black text-slate-800">${stats.expenses.toLocaleString()}</h3>
++          </div>
+         </div>
+-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+-          <p className="text-sm font-medium text-slate-500 mb-1">Total Gastos</p>
+-          <h3 className="text-3xl font-bold text-slate-800">${stats.expenses.toLocaleString()}</h3>
++
++        {/* Orders Card */}
++        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
++          <div className="flex justify-between items-start mb-4">
++            <div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl">
++              <Package size={24} />
++            </div>
++            <span className="text-slate-400 font-bold text-xs">{stats.deliveredOrders} Listos</span>
++          </div>
++          <div>
++            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Entregados</p>
++            <h3 className="text-2xl font-black text-slate-800">{stats.deliveredOrders} <span className="text-xs font-medium text-slate-400">pedidos</span></h3>
++          </div>
++        </div>
++      </div>
++
++      {/* Main Charts Row */}
++      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
++        {/* Evolution Chart */}
++        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
++          <div className="flex justify-between items-center mb-8">
++            <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight">Evolución Anual</h4>
++            <div className="flex gap-4 text-[10px] font-bold uppercase">
++              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ventas</div>
++              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Gastos</div>
++            </div>
++          </div>
++          <div className="h-[300px] w-full">
++            <ResponsiveContainer width="100%" height="100%">
++              <AreaChart data={monthlyData}>
++                <defs>
++                  <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
++                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
++                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
++                  </linearGradient>
++                  <linearGradient id="colorGastos" x1="0" y1="0" x2="0" y2="1">
++                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.1} />
++                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
++                  </linearGradient>
++                </defs>
++                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
++                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
++                <YAxis hide />
++                <Tooltip
++                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', fontSize: '12px', fontWeight: 'bold' }}
++                />
++                <Area type="monotone" dataKey="ventas" stroke="#10b981" fillOpacity={1} fill="url(#colorVentas)" strokeWidth={3} />
++                <Area type="monotone" dataKey="gastos" stroke="#f43f5e" fillOpacity={1} fill="url(#colorGastos)" strokeWidth={3} />
++              </AreaChart>
++            </ResponsiveContainer>
++          </div>
+         </div>
+-        <div className={`${stats.profit >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'} p-6 rounded-2xl border shadow-sm`}>
+-          <p className={`text-sm font-medium ${stats.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'} mb-1`}>Utilidad Neta</p>
+-          <h3 className={`text-3xl font-bold ${stats.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>${stats.profit.toLocaleString()}</h3>
++
++        {/* Ranking List */}
++        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
++          <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight mb-6">Top Productos</h4>
++          <div className="space-y-4">
++            {topProducts.length > 0 ? topProducts.map((p, i) => (
++              <div key={i} className="flex items-center justify-between group hover:bg-slate-50 p-2 rounded-2xl transition-all cursor-default">
++                <div className="flex items-center gap-3">
++                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>
++                    {i + 1}
++                  </div>
++                  <div>
++                    <p className="font-bold text-slate-700 text-sm leading-tight">{p.name}</p>
++                    <p className="text-[10px] text-slate-400 font-bold uppercase">{p.count} vendidos</p>
++                  </div>
++                </div>
++                <div className="text-right">
++                  <p className="font-black text-slate-800 text-sm">${p.revenue.toLocaleString()}</p>
++                  <ArrowUpRight className="inline-block text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" size={14} />
++                </div>
++              </div>
++            )) : (
++              <p className="text-center text-slate-400 italic text-sm py-10">Sin pedidos suficientes...</p>
++            )}
++          </div>
++
++          {topProducts.length > 0 && (
++            <div className="mt-8 pt-6 border-t border-slate-100">
++              <div className="bg-rose-50 rounded-2xl p-4 flex items-center gap-4">
++                <div className="bg-white p-2 rounded-xl text-rose-500 shadow-sm">
++                  <TrendingUp size={20} />
++                </div>
++                <div>
++                  <p className="text-[10px] text-rose-500 font-black uppercase">Mejor Producto</p>
++                  <p className="text-sm font-bold text-slate-800">{topProducts[0].name}</p>
++                </div>
++              </div>
++            </div>
++          )}
+         </div>
+       </div>
+ 
+-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+-        {/* Main Comparison Chart */}
+-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-[350px]">
+-          <h4 className="font-bold text-slate-700 mb-6">Comparativa General</h4>
+-          <ResponsiveContainer width="100%" height="80%">
+-            <BarChart data={chartData}>
++      {/* Cash Flow Evolution */}
++      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
++        <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight mb-8">Flujo de Caja Mensual (Balance)</h4>
++        <div className="h-[250px]">
++          <ResponsiveContainer width="100%" height="100%">
++            <BarChart data={monthlyData}>
+               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
+-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
+-              <Tooltip 
+-                cursor={{fill: '#f8fafc'}}
+-                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)'}}
+-              />
+-              <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={60}>
+-                {chartData.map((entry, index) => (
+-                  <Cell key={`cell-${index}`} fill={entry.color} />
++              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
++              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
++              <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }} />
++              <Bar dataKey="balance" radius={[6, 6, 6, 6]}>
++                {monthlyData.map((entry, index) => (
++                  <Cell key={`cell-${index}`} fill={entry.balance >= 0 ? '#10b981' : '#f43f5e'} />
+                 ))}
+               </Bar>
+             </BarChart>
+           </ResponsiveContainer>
+         </div>
+-
+-        {/* Expense Distribution */}
+-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-[350px]">
+-          <h4 className="font-bold text-slate-700 mb-6">Distribución de Gastos</h4>
+-          {expenseData.length > 0 ? (
+-            <ResponsiveContainer width="100%" height="80%">
+-              <PieChart>
+-                <Pie
+-                  data={expenseData}
+-                  cx="50%"
+-                  cy="50%"
+-                  innerRadius={60}
+-                  outerRadius={80}
+-                  paddingAngle={5}
+-                  dataKey="value"
+-                >
+-                  {expenseData.map((entry, index) => (
+-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+-                  ))}
+-                </Pie>
+-                <Tooltip 
+-                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)'}}
+-                />
+-              </PieChart>
+-            </ResponsiveContainer>
+-          ) : (
+-            <div className="h-full flex items-center justify-center text-slate-400 italic text-sm">
+-              No hay gastos registrados para analizar
+-            </div>
+-          )}
+-        </div>
+       </div>
+     </div>
+   );
+diff --git a/components/Inventory.tsx b/components/Inventory.tsx
+new file mode 100644
+index 0000000..13231c3
+--- /dev/null
++++ b/components/Inventory.tsx
+@@ -0,0 +1,275 @@
++import React, { useState } from 'react';
++import { Material, InventoryLog, Transaction } from '../types';
++import { Package, Plus, Minus, AlertTriangle, History, ArrowRightLeft } from 'lucide-react';
++
++interface InventoryProps {
++    materials: Material[];
++    logs: InventoryLog[];
++    onAddStock: (materialId: string, quantity: number, cost: number, registerExpense: boolean) => Promise<void>;
++    onRemoveStock: (materialId: string, quantity: number, reason: string) => Promise<void>;
++}
++
++export default function Inventory({ materials, logs, onAddStock, onRemoveStock }: InventoryProps) {
++    const [activeTab, setActiveTab] = useState<'control' | 'history'>('control');
++
++    // Stock adjustment state
++    const [selectedMaterial, setSelectedMaterial] = useState<string>('');
++    const [adjustAmount, setAdjustAmount] = useState<string>('');
++    const [adjustReason, setAdjustReason] = useState<string>('Merma / Daño');
++    const [adjustCost, setAdjustCost] = useState<string>('');
++    const [registerExpense, setRegisterExpense] = useState(true);
++    const [showAdjustModal, setShowAdjustModal] = useState<'add' | 'remove' | null>(null);
++
++    const handleAdjust = async () => {
++        if (!selectedMaterial || !adjustAmount || Number(adjustAmount) <= 0) return;
++
++        if (showAdjustModal === 'add') {
++            await onAddStock(selectedMaterial, Number(adjustAmount), Number(adjustCost || 0), registerExpense);
++        } else if (showAdjustModal === 'remove') {
++            await onRemoveStock(selectedMaterial, Number(adjustAmount), adjustReason);
++        }
++
++        closeModal();
++    };
++
++    const closeModal = () => {
++        setShowAdjustModal(null);
++        setSelectedMaterial('');
++        setAdjustAmount('');
++        setAdjustCost('');
++        setAdjustReason('Merma / Daño');
++        setRegisterExpense(true);
++    };
++
++    const getLowStockMaterials = () => {
++        // Arbitrary rule for now if they don't have minWarning set up: show warning if qty < 10
++        return materials.filter(m => m.quantity <= (m.minWarning || 10));
++    };
++
++    const lowStock = getLowStockMaterials();
++
++    return (
++        <div className="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-slate-100 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
++
++            {/* Header */}
++            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-slate-100 pb-6">
++                <div>
++                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
++                        <Package className="text-rose-500" />
++                        Control de Inventario
++                    </h2>
++                    <p className="text-slate-500 text-sm mt-1">Supervisa tus existencias, suma compras o registra mermas.</p>
++                </div>
++
++                <div className="flex bg-slate-100 p-1.5 rounded-xl">
++                    <button
++                        onClick={() => setActiveTab('control')}
++                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'control' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
++                    >
++                        Existencias
++                    </button>
++                    <button
++                        onClick={() => setActiveTab('history')}
++                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
++                    >
++                        Historial de Movimientos
++                    </button>
++                </div>
++            </div>
++
++            {activeTab === 'control' && (
++                <div className="animate-in fade-in duration-300">
++
++                    {/* Action Buttons */}
++                    <div className="flex gap-4 mb-8">
++                        <button
++                            onClick={() => setShowAdjustModal('add')}
++                            className="flex items-center gap-2 bg-emerald-50 text-emerald-700 font-bold px-6 py-3 rounded-xl hover:bg-emerald-100 transition-colors"
++                        >
++                            <Plus size={20} /> Registrar Compra (Sumar Stock)
++                        </button>
++                        <button
++                            onClick={() => setShowAdjustModal('remove')}
++                            className="flex items-center gap-2 bg-amber-50 text-amber-700 font-bold px-6 py-3 rounded-xl hover:bg-amber-100 transition-colors"
++                        >
++                            <Minus size={20} /> Registrar Uso/Merma (Restar Stock)
++                        </button>
++                    </div>
++
++                    {/* Low Stock Alerts */}
++                    {lowStock.length > 0 && (
++                        <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl mb-8">
++                            <div className="flex items-center gap-2 text-rose-800 font-bold mb-3">
++                                <AlertTriangle size={20} />
++                                <h3>Insumos con Poco Stock</h3>
++                            </div>
++                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
++                                {lowStock.map(m => (
++                                    <div key={m.id} className="bg-white px-3 py-2 rounded-lg border border-rose-100 shadow-sm">
++                                        <p className="text-sm font-bold truncate text-slate-700" title={m.name}>{m.name}</p>
++                                        <p className="text-rose-600 font-black text-lg">{m.quantity} <span className="text-xs font-normal text-slate-500">{m.unit}</span></p>
++                                    </div>
++                                ))}
++                            </div>
++                        </div>
++                    )}
++
++                    {/* Materials Grid */}
++                    <h3 className="font-bold text-slate-700 mb-4 text-lg">Todos tus Insumos</h3>
++                    {materials.length === 0 ? (
++                        <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
++                            <Package className="mx-auto mb-2 opacity-50" size={32} />
++                            <p>No tienes insumos en tu catálogo aún. Agrégalos en "Catálogo y Costos".</p>
++                        </div>
++                    ) : (
++                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
++                            {materials.map(m => (
++                                <div key={m.id} className="bg-slate-50 border border-slate-100 p-4 rounded-xl flex flex-col items-center justify-center relative overflow-hidden group">
++                                    <div className={`absolute top-0 w-full h-1 ${m.quantity <= (m.minWarning || 10) ? 'bg-rose-500' : 'bg-emerald-400'}`}></div>
++                                    <h4 className="text-slate-600 font-bold text-center mb-1 w-full truncate" title={m.name}>{m.name}</h4>
++                                    <p className="text-3xl font-black text-slate-800">{m.quantity}</p>
++                                    <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-bold">{m.unit}</p>
++                                </div>
++                            ))}
++                        </div>
++                    )}
++
++                </div>
++            )}
++
++            {activeTab === 'history' && (
++                <div className="animate-in fade-in duration-300">
++                    {logs.length === 0 ? (
++                        <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
++                            <History className="mx-auto mb-2 opacity-50" size={32} />
++                            <p>No hay historial de movimientos de inventario todavía.</p>
++                        </div>
++                    ) : (
++                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
++                            <table className="w-full text-left text-sm">
++                                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
++                                    <tr>
++                                        <th className="px-4 py-3 font-bold">Fecha</th>
++                                        <th className="px-4 py-3 font-bold">Insumo</th>
++                                        <th className="px-4 py-3 font-bold text-center">Movimiento</th>
++                                        <th className="px-4 py-3 font-bold">Razón</th>
++                                    </tr>
++                                </thead>
++                                <tbody className="divide-y divide-slate-100">
++                                    {logs.slice().reverse().map(log => {
++                                        const mat = materials.find(m => m.id === log.materialId);
++                                        const isPositive = log.quantityChange > 0;
++                                        return (
++                                            <tr key={log.id} className="hover:bg-slate-50 transition-colors">
++                                                <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{new Date(log.date).toLocaleString()}</td>
++                                                <td className="px-4 py-3 font-bold text-slate-700">{mat?.name || 'Insumo eliminado'}</td>
++                                                <td className="px-4 py-3 text-center">
++                                                    <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
++                                                        {isPositive ? '+' : ''}{log.quantityChange}
++                                                    </span>
++                                                </td>
++                                                <td className="px-4 py-3 text-slate-600">{log.reason}</td>
++                                            </tr>
++                                        );
++                                    })}
++                                </tbody>
++                            </table>
++                        </div>
++                    )}
++                </div>
++            )}
++
++            {/* Adjust Stock Modal */}
++            {showAdjustModal && (
++                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
++                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden p-6">
++                        <h3 className={`text-xl font-bold mb-4 flex items-center gap-2 ${showAdjustModal === 'add' ? 'text-emerald-600' : 'text-rose-600'}`}>
++                            {showAdjustModal === 'add' ? <Plus /> : <Minus />}
++                            {showAdjustModal === 'add' ? 'Agregar Insumos' : 'Restar Insumos'}
++                        </h3>
++
++                        <div className="space-y-4">
++                            <div>
++                                <label className="block text-xs font-bold text-slate-500 mb-1">Selecciona el Imsumo</label>
++                                <select
++                                    title="Selecciona el insumo"
++                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500"
++                                    value={selectedMaterial}
++                                    onChange={(e) => setSelectedMaterial(e.target.value)}
++                                >
++                                    <option value="">-- Elige qué insumo vas a afectar --</option>
++                                    {materials.map(m => (
++                                        <option key={m.id} value={m.id}>{m.name} (Stock actual: {m.quantity} {m.unit})</option>
++                                    ))}
++                                </select>
++                            </div>
++
++                            <div>
++                                <label className="block text-xs font-bold text-slate-500 mb-1">Cantidad a {showAdjustModal === 'add' ? 'Sumar' : 'Restar'}</label>
++                                <input
++                                    type="number"
++                                    min="0.1"
++                                    step="any"
++                                    placeholder="Ej: 50"
++                                    value={adjustAmount}
++                                    onChange={e => setAdjustAmount(e.target.value)}
++                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none"
++                                />
++                            </div>
++
++                            {showAdjustModal === 'add' ? (
++                                <>
++                                    <div>
++                                        <label className="block text-xs font-bold text-slate-500 mb-1">Costo Total de esta Compra ($)</label>
++                                        <input
++                                            type="number"
++                                            placeholder="Ej: 15000"
++                                            value={adjustCost}
++                                            onChange={e => setAdjustCost(e.target.value)}
++                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none"
++                                        />
++                                    </div>
++                                    <div className="flex items-center gap-2 mt-2">
++                                        <input
++                                            type="checkbox"
++                                            id="registerExpense"
++                                            title="Registrar como egreso"
++                                            checked={registerExpense}
++                                            onChange={e => setRegisterExpense(e.target.checked)}
++                                            className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
++                                        />
++                                        <label htmlFor="registerExpense" className="text-sm font-bold text-slate-600 cursor-pointer">
++                                            También registrar este monto como Gasto en la Caja
++                                        </label>
++                                    </div>
++                                </>
++                            ) : (
++                                <div>
++                                    <label className="block text-xs font-bold text-slate-500 mb-1">Motivo / Razón</label>
++                                    <input
++                                        type="text"
++                                        placeholder="Ej: Prueba fallida de impresión"
++                                        value={adjustReason}
++                                        onChange={e => setAdjustReason(e.target.value)}
++                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none"
++                                    />
++                                </div>
++                            )}
++                        </div>
++
++                        <div className="mt-8 flex gap-3">
++                            <button onClick={closeModal} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button>
++                            <button
++                                onClick={handleAdjust}
++                                disabled={!selectedMaterial || !adjustAmount}
++                                className={`flex-1 py-3 text-white font-bold rounded-xl transition-all shadow-lg active:scale-95 disabled:opacity-50 ${showAdjustModal === 'add' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-200' : 'bg-rose-500 hover:bg-rose-600 shadow-rose-200'}`}
++                            >
++                                Confirmar
++                            </button>
++                        </div>
++                    </div>
++                </div>
++            )}
++        </div>
++    );
++}
+diff --git a/components/InventoryAlertModal.tsx b/components/InventoryAlertModal.tsx
+new file mode 100644
+index 0000000..f782b93
+--- /dev/null
++++ b/components/InventoryAlertModal.tsx
+@@ -0,0 +1,144 @@
++import React from 'react';
++import { Material, ProductConfig } from '../types';
++import { AlertTriangle, X, Package } from 'lucide-react';
++
++interface InventoryAlertModalProps {
++    materials: Material[];
++    products: ProductConfig[];
++    onClose: () => void;
++}
++
++const InventoryAlertModal: React.FC<InventoryAlertModalProps> = ({ materials, products, onClose }) => {
++    // Calculate build capacity for each product
++    const productAlerts = products.map(product => {
++        let maxBuildable = Infinity;
++        const missingMaterials: { materialName: string; needed: number; current: number; unit: string; deficitFor10: number }[] = [];
++
++        // Si el producto no tiene materiales configurados, no podemos calcular
++        if (product.materials.length === 0) {
++            maxBuildable = 0;
++        }
++
++        product.materials.forEach(pm => {
++            const mat = materials.find(m => m.id === pm.materialId);
++            if (mat) {
++                const buildableWithThisMat = Math.floor(mat.quantity / pm.quantity);
++                if (buildableWithThisMat < maxBuildable) {
++                    maxBuildable = buildableWithThisMat;
++                }
++
++                // We want to guarantee at least 10 units of the product
++                const amountNeededFor10 = pm.quantity * 10;
++                if (mat.quantity < amountNeededFor10) {
++                    missingMaterials.push({
++                        materialName: mat.name,
++                        needed: amountNeededFor10,
++                        current: mat.quantity,
++                        unit: mat.unit,
++                        deficitFor10: amountNeededFor10 - mat.quantity
++                    });
++                }
++            } else {
++                maxBuildable = 0;
++            }
++        });
++
++        return {
++            product,
++            maxBuildable: maxBuildable === Infinity ? 0 : maxBuildable,
++            missingMaterials,
++            hasAlert: maxBuildable < 10
++        };
++    });
++
++    const alerts = productAlerts.filter(p => p.hasAlert);
++
++    return (
++        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
++            <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 mt-10 max-h-[85vh] flex flex-col">
++                {/* Header */}
++                <div className="bg-rose-600 p-6 flex justify-between items-center text-white shrink-0">
++                    <div className="flex items-center gap-3">
++                        <div className="p-2 bg-white/20 backdrop-blur-md rounded-xl">
++                            <AlertTriangle className="w-6 h-6 text-white" />
++                        </div>
++                        <div>
++                            <h2 className="text-xl font-bold">Alertas de Producción</h2>
++                            <p className="text-rose-100 text-sm">Productos con insumos insuficientes (Meta: 10 unidades)</p>
++                        </div>
++                    </div>
++                    <button title="Cerrar modal" onClick={onClose} className="text-white/70 hover:text-white transition-colors bg-white/10 p-2 rounded-full hover:bg-white/20">
++                        <X size={20} />
++                    </button>
++                </div>
++
++                {/* Content */}
++                <div className="p-6 overflow-y-auto">
++                    {alerts.length === 0 ? (
++                        <div className="text-center py-12 px-6">
++                            <div className="w-20 h-20 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
++                                <Package size={32} />
++                            </div>
++                            <h3 className="text-xl font-bold text-slate-800 mb-2">¡Todo en Orden!</h3>
++                            <p className="text-slate-500 max-w-sm mx-auto">
++                                Tienes insumos suficientes para ensamblar al menos 10 unidades de cada uno de tus productos.
++                            </p>
++                        </div>
++                    ) : (
++                        <div className="space-y-6">
++                            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">
++                                Productos afectados ({alerts.length}):
++                            </p>
++
++                            {alerts.map(({ product, maxBuildable, missingMaterials }) => (
++                                <div key={product.id} className="bg-white border-2 border-rose-100 rounded-2xl p-5 shadow-sm">
++                                    <div className="flex justify-between items-start mb-4 border-b border-slate-100 pb-4">
++                                        <div>
++                                            <h4 className="font-bold text-lg text-slate-800 flex items-center gap-2">
++                                                {product.name}
++                                            </h4>
++                                            <p className="text-sm text-slate-500 mt-1">
++                                                Stock actual permite armar: <span className={`font-black ${maxBuildable === 0 ? 'text-rose-600' : 'text-amber-500'}`}>{maxBuildable} {(maxBuildable === 1 ? 'unidad' : 'unidades')}</span>
++                                            </p>
++                                        </div>
++                                    </div>
++
++                                    {missingMaterials.length > 0 ? (
++                                        <div>
++                                            <p className="text-xs font-bold text-slate-400 uppercase mb-3">Materiales que necesitas comprar para llegar a 10:</p>
++                                            <div className="space-y-2">
++                                                {missingMaterials.map((mat, i) => (
++                                                    <div key={i} className="flex justify-between items-center bg-rose-50/50 p-3 rounded-xl border border-rose-100">
++                                                        <span className="text-sm font-semibold text-slate-700">{mat.materialName}</span>
++                                                        <div className="text-right">
++                                                            <p className="text-xs text-rose-600 font-bold uppercase">Te Faltan {mat.deficitFor10} {mat.unit}</p>
++                                                            <p className="text-[10px] text-slate-500">Tienes {mat.current} / Necesitas {mat.needed}</p>
++                                                        </div>
++                                                    </div>
++                                                ))}
++                                            </div>
++                                        </div>
++                                    ) : (
++                                        <p className="text-sm text-rose-500 italic">No hay receta definida para este producto.</p>
++                                    )}
++                                </div>
++                            ))}
++                        </div>
++                    )}
++                </div>
++
++                {/* Footer */}
++                <div className="p-4 bg-slate-50 border-t border-slate-100 shrink-0 text-center">
++                    <button
++                        onClick={onClose}
++                        className="px-6 py-2.5 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-colors"
++                    >
++                        Entendido
++                    </button>
++                </div>
++            </div>
++        </div>
++    );
++};
++
++export default InventoryAlertModal;
+diff --git a/components/OrderForm.tsx b/components/OrderForm.tsx
+index 9e5fddf..2daf075 100644
+--- a/components/OrderForm.tsx
++++ b/components/OrderForm.tsx
+@@ -1,14 +1,15 @@
+ 
+ import React, { useState } from 'react';
+-import { Order } from '../types';
++import { Order, ProductConfig } from '../types';
+ 
+ interface OrderFormProps {
++    products?: ProductConfig[];
+     onSubmit: (data: Omit<Order, 'id' | 'status' | 'paid' | 'createdAt'>) => void;
+     onCancel: () => void;
+     initialData?: Order;
+ }
+ 
+-const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel, initialData }) => {
++const OrderForm: React.FC<OrderFormProps> = ({ products = [], onSubmit, onCancel, initialData }) => {
+     const [clientName, setClientName] = useState(initialData?.clientName || '');
+     const [productType, setProductType] = useState(initialData?.productType || '');
+     const [value, setValue] = useState(initialData?.value?.toString() || '');
+@@ -27,6 +28,17 @@ const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel, initialData }
+         });
+     };
+ 
++    const handleProductChange = (val: string) => {
++        setProductType(val);
++        // Autofill logic
++        if (!initialData && (!value || value === '0')) {
++            const match = products.find(p => p.name.toLowerCase() === val.toLowerCase());
++            if (match) {
++                setValue(String(match.salePrice));
++            }
++        }
++    };
++
+     return (
+         <form onSubmit={handleSubmit} className="space-y-4">
+             <div>
+@@ -47,11 +59,17 @@ const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel, initialData }
+                     <input
+                         type="text"
+                         required
++                        list="product-suggestions"
+                         value={productType}
+-                        onChange={(e) => setProductType(e.target.value)}
++                        onChange={(e) => handleProductChange(e.target.value)}
+                         placeholder="Ej: Agenda Pro"
+                         className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+                     />
++                    <datalist id="product-suggestions">
++                        {products.map(p => (
++                            <option key={p.id} value={p.name} />
++                        ))}
++                    </datalist>
+                 </div>
+                 <div>
+                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Valor Pedido ($)</label>
+diff --git a/env_trans.json b/env_trans.json
+new file mode 100644
+index 0000000..2bf10bc
+Binary files /dev/null and b/env_trans.json differ
+diff --git a/estado del emprendimiento.xlsx b/estado del emprendimiento.xlsx
+new file mode 100644
+index 0000000..f6390e4
+Binary files /dev/null and b/estado del emprendimiento.xlsx differ
+diff --git a/peek_excel.js b/peek_excel.js
+new file mode 100644
+index 0000000..cb75f9b
+--- /dev/null
++++ b/peek_excel.js
+@@ -0,0 +1,18 @@
++import xlsx from 'xlsx';
++import fs from 'fs';
++
++try {
++    const file = 'estado del emprendimiento.xlsx';
++    const workbook = xlsx.readFile(file);
++    const data = {};
++
++    for (const sheetName of workbook.SheetNames) {
++        const sheet = workbook.Sheets[sheetName];
++        const json = xlsx.utils.sheet_to_json(sheet, { header: 1 });
++        data[sheetName] = json.slice(0, 5); // Just peek at first 5 rows
++    }
++
++    console.log(JSON.stringify(data, null, 2));
++} catch (err) {
++    console.error(err);
++}
+diff --git a/populate.js b/populate.js
+new file mode 100644
+index 0000000..680b1ec
+--- /dev/null
++++ b/populate.js
+@@ -0,0 +1,106 @@
++import crypto from 'crypto';
++
++const API_URL = 'https://script.google.com/macros/s/AKfycbztGCKg5Sqz2Bl7QqSecB_4JXyTHK_vNWXHbm4hL5egDs5WfWMG2UWCHrcMDE_rRq-I/exec';
++
++const materialsToLoad = [
++    { name: 'Cartón A5', unit: 'Unidad', costPerUnit: 0, quantity: 0, minWarning: 10 },
++    { name: 'Cartón B5', unit: 'Unidad', costPerUnit: 0, quantity: 0, minWarning: 10 },
++    { name: 'Hojas bond A5 (100gr)', unit: 'Hoja', costPerUnit: 0, quantity: 0, minWarning: 10 },
++    { name: 'Hojas bond B5 (120gr)', unit: 'Hoja', costPerUnit: 0, quantity: 0, minWarning: 10 },
++    { name: 'Espiral de 16mm', unit: 'Unidad', costPerUnit: 0, quantity: 0, minWarning: 5 },
++    { name: 'Espiral de 22mm', unit: 'Unidad', costPerUnit: 0, quantity: 0, minWarning: 5 },
++    { name: 'Papel fotográfico adhesivo', unit: 'Hoja', costPerUnit: 0, quantity: 0, minWarning: 10 },
++    { name: 'Papel holográfico transparente', unit: 'Hoja', costPerUnit: 0, quantity: 0, minWarning: 10 },
++    { name: 'Papel holográfico con diseño', unit: 'Hoja', costPerUnit: 0, quantity: 0, minWarning: 10 },
++    { name: 'Elástico', unit: 'Unidad', costPerUnit: 0, quantity: 0, minWarning: 5 },
++    { name: 'Pasa elástico con círculo de resina', unit: 'Unidad', costPerUnit: 0, quantity: 0, minWarning: 5 },
++    { name: 'Esquineros', unit: 'Unidad', costPerUnit: 0, quantity: 0, minWarning: 20 },
++];
++
++async function run() {
++    console.log("Creando materiales base...");
++    const materialMap = {};
++    for (const m of materialsToLoad) {
++        const id = crypto.randomUUID();
++        materialMap[m.name] = id;
++
++        await fetch(API_URL, {
++            method: 'POST',
++            headers: { 'Content-Type': 'text/plain' },
++            body: JSON.stringify({
++                action: 'addMaterial',
++                data: {
++                    id: id,
++                    name: m.name,
++                    quantity: m.quantity,
++                    unit: m.unit,
++                    costperunit: m.costPerUnit,
++                    minwarning: m.minWarning
++                }
++            })
++        });
++        console.log("Material agregado:", m.name);
++    }
++
++    const productsToLoad = [
++        {
++            name: 'Libreta escolar (A5)',
++            materials: [
++                { materialId: materialMap['Cartón A5'], quantity: 2 },
++                { materialId: materialMap['Hojas bond A5 (100gr)'], quantity: 50 },
++                { materialId: materialMap['Espiral de 16mm'], quantity: 1 },
++                { materialId: materialMap['Papel fotográfico adhesivo'], quantity: 4 },
++                { materialId: materialMap['Papel holográfico transparente'], quantity: 2 },
++            ]
++        },
++        {
++            name: 'Agenda A5',
++            materials: [
++                { materialId: materialMap['Cartón A5'], quantity: 2 },
++                { materialId: materialMap['Hojas bond A5 (100gr)'], quantity: 100 },
++                { materialId: materialMap['Espiral de 22mm'], quantity: 1 },
++                { materialId: materialMap['Papel fotográfico adhesivo'], quantity: 4 },
++                { materialId: materialMap['Papel holográfico con diseño'], quantity: 2 },
++                { materialId: materialMap['Elástico'], quantity: 1 },
++            ]
++        },
++        {
++            name: 'Agenda B5',
++            materials: [
++                { materialId: materialMap['Cartón B5'], quantity: 2 },
++                { materialId: materialMap['Hojas bond B5 (120gr)'], quantity: 100 },
++                { materialId: materialMap['Espiral de 22mm'], quantity: 1 }, // Default a 22mm, puede cambiar luego a 25.
++                { materialId: materialMap['Papel fotográfico adhesivo'], quantity: 4 },
++                { materialId: materialMap['Papel holográfico con diseño'], quantity: 2 },
++                { materialId: materialMap['Elástico'], quantity: 1 },
++                { materialId: materialMap['Pasa elástico con círculo de resina'], quantity: 1 },
++                { materialId: materialMap['Esquineros'], quantity: 4 },
++            ]
++        }
++    ];
++
++    console.log("Creando productos base...");
++    for (const p of productsToLoad) {
++        const id = crypto.randomUUID();
++        await fetch(API_URL, {
++            method: 'POST',
++            headers: { 'Content-Type': 'text/plain' },
++            body: JSON.stringify({
++                action: 'addProduct',
++                data: {
++                    id: id,
++                    name: p.name,
++                    materials: JSON.stringify(p.materials),
++                    productioncost: 0,
++                    profitmargin: 70,
++                    saleprice: 0
++                }
++            })
++        });
++        console.log("Producto agregado:", p.name);
++    }
++
++    console.log("HECHO!");
++}
++
++run().catch(console.error);
+diff --git a/raw_transactions.json b/raw_transactions.json
+new file mode 100644
+index 0000000..a31c507
+Binary files /dev/null and b/raw_transactions.json differ
+diff --git a/raw_transactions_node.json b/raw_transactions_node.json
+new file mode 100644
+index 0000000..2f401b5
+--- /dev/null
++++ b/raw_transactions_node.json
+@@ -0,0 +1,410 @@
++[
++  {
++    "id": "e6435e2a-be43-4e4b-81e4-42043d7f094d",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 32780,
++    "type": "GASTO",
++    "category": "Agenda Personalizada",
++    "description": "Agenda A5:= 20"
++  },
++  {
++    "id": "1de02c04-ebbd-4d31-8ace-ca1b6dc8e805",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 24990,
++    "type": "GASTO",
++    "category": "Agenda Personalizada",
++    "description": "Agenda B5: = 10"
++  },
++  {
++    "id": "a5160aa3-d21f-4cfa-8f1c-5b8ff9823d74",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 2950,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Anillo 22 mm dorado: 4 tiras"
++  },
++  {
++    "id": "4bf51c34-0685-49da-a882-50e4dd3a1fa6",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 2950,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Anillo 22 mm blanco: 4 tiras ="
++  },
++  {
++    "id": "4a05ad7a-3475-416b-b15a-a7692c662eec",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 2200,
++    "type": "GASTO",
++    "category": "Agenda Personalizada",
++    "description": "elastico glitter: 6 mm x 5 mts"
++  },
++  {
++    "id": "ea0e13fe-2342-4db5-9d18-146cb254bdc8",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 2200,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "elastico dorado: 6 mm x 5 mts ="
++  },
++  {
++    "id": "3a533350-1411-4eac-84ed-4360b22f6cab",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 3500,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "12 pasacinta + 12 circulos de resina:"
++  },
++  {
++    "id": "b321fdc7-ff58-485a-8ff9-8090b1a5b653",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 1200,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "100 ojetillos dorados:"
++  },
++  {
++    "id": "54f9ba25-3f21-4154-ba9b-0700d6b74f0b",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 3500,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "laminado holografico glitter (10 hojas):"
++  },
++  {
++    "id": "f0fc3aa3-1054-4e78-ba6e-3313297b4b24",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 11990,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "ojetilladora perforadora + 400 ojetillos:"
++  },
++  {
++    "id": "2c9f4fa9-435d-454e-b93d-4b528124a093",
++    "date": "2025-12-25T03:00:00.000Z",
++    "amount": 70000,
++    "type": "GASTO",
++    "category": "Herramientas",
++    "description": "Anilladora"
++  },
++  {
++    "id": "701061b6-aba0-4c1d-9370-e65b63a7e163",
++    "date": "2026-01-04T03:00:00.000Z",
++    "amount": 8950,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Esquineros"
++  },
++  {
++    "id": "a2421376-ae48-4ae1-90ea-d24ad52a5d35",
++    "date": "2026-01-02T03:00:00.000Z",
++    "amount": 5600,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Laminado frío transparente 20 hojas"
++  },
++  {
++    "id": "492f7a8f-e608-4013-b691-030af430b1b9",
++    "date": "2026-01-02T03:00:00.000Z",
++    "amount": 8500,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Cartón A5  50h"
++  },
++  {
++    "id": "679f6783-e62f-4969-b644-fc0857575fdf",
++    "date": "2026-01-02T03:00:00.000Z",
++    "amount": 5600,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Papel bond 106 grs"
++  },
++  {
++    "id": "7bd7b0be-4768-450f-97ef-6ca308c66e6b",
++    "date": "2026-01-02T03:00:00.000Z",
++    "amount": 6520,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Espiral plástico 16mm"
++  },
++  {
++    "id": "659103bb-43a8-4369-8d99-057c7c9c9b31",
++    "date": "2026-01-02T03:00:00.000Z",
++    "amount": 10899,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "48 hojas laminado frío holografico"
++  },
++  {
++    "id": "5d0ec9f5-222d-4996-aedd-2225cd6df9ac",
++    "date": "2026-01-04T03:00:00.000Z",
++    "amount": 8000,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Reglas de encuadernacion"
++  },
++  {
++    "id": "4eb6976e-42f0-441a-8aad-decac1e62f4e",
++    "date": "2026-01-04T03:00:00.000Z",
++    "amount": 6600,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Reglas medidora de anillos"
++  },
++  {
++    "id": "8052febe-63e8-47c6-84ce-1fe30b215d1c",
++    "date": "2026-01-04T03:00:00.000Z",
++    "amount": 7900,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "Topes para cinch"
++  },
++  {
++    "id": "6afcd3a9-3146-4f06-8402-8a7a4fb374a5",
++    "date": "2026-01-04T03:00:00.000Z",
++    "amount": 14000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Agenda - Yeca"
++  },
++  {
++    "id": "12eb8e08-a4ae-423b-88d1-b536100c43f3",
++    "date": "2026-01-04T03:00:00.000Z",
++    "amount": 8000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Libreta de comunicaciones - Juan pablo ramirez toledo "
++  },
++  {
++    "id": "a264ec61-7937-4698-8052-e1452112720b",
++    "date": "2026-01-04T03:00:00.000Z",
++    "amount": 14000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Agenda reposteria - Yeca regalo fran"
++  },
++  {
++    "id": "9feafb14-c9ad-440d-b895-b9e97b99f078",
++    "date": "2026-01-15T03:00:00.000Z",
++    "amount": 14000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Agenda personalizada  - Tia anita PIE "
++  },
++  {
++    "id": "aad1a4d4-796a-4e10-976c-8e3be6dd0c89",
++    "date": "2026-01-22T03:00:00.000Z",
++    "amount": 18000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Agenda futura abogada  - Tia cami "
++  },
++  {
++    "id": "2d77a13a-04d7-47e2-b129-3954b3bbc2eb",
++    "date": "2026-02-03T03:00:00.000Z",
++    "amount": 18000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Agenda b5 - Guisel troncoso"
++  },
++  {
++    "id": "b7dc2921-f19c-4c3b-96c5-de42a00d4986",
++    "date": "2026-02-03T03:00:00.000Z",
++    "amount": 10000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Etiquetas escolares  - Tia maria "
++  },
++  {
++    "id": "7d77f5f7-7f93-4f48-b8b6-b274e55f5723",
++    "date": "2026-02-03T03:00:00.000Z",
++    "amount": 18000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Agenda párvulos  - Katy aravena "
++  },
++  {
++    "id": "a3262112-fbb9-4fff-9b1e-2f3f32d06ca3",
++    "date": "2026-02-05T03:00:00.000Z",
++    "amount": 8000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: libreta comunciaciones  - tia maria "
++  },
++  {
++    "id": "8980106c-d84c-4e57-9d09-c202fea4fa6f",
++    "date": "2026-02-05T03:00:00.000Z",
++    "amount": 8000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: libreta comunicaciones  - tia maria "
++  },
++  {
++    "id": "38d9ca5c-2b8a-443b-b35f-9080606b47ff",
++    "date": "2026-02-09T03:00:00.000Z",
++    "amount": 18000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: agenda  - jeanette toledo "
++  },
++  {
++    "id": "156b0013-5cf5-4c23-aa40-306e624d1827",
++    "date": "2026-02-09T03:00:00.000Z",
++    "amount": 20000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Etiquetas escolares  - Verónica del 4b"
++  },
++  {
++    "id": "27a33292-a514-48f3-9488-884a93bf12bb",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 5000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: etiquetas escolares  - maricela  nobel "
++  },
++  {
++    "id": "4157cdc2-8704-4a37-84e6-b28996325e82",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 5391,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "papel  double side  glossy 260gr."
++  },
++  {
++    "id": "da618095-5e66-4bd7-9c77-fdc73e98e4f6",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 24975,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "pack agenda B5"
++  },
++  {
++    "id": "803568e8-5787-4dc9-a5b9-9c41b5c631c5",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 15300,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "pack  agenda A5"
++  },
++  {
++    "id": "fd0117de-8ef0-460d-bd45-14995208e225",
++    "date": "2026-02-13T03:00:00.000Z",
++    "amount": 13500,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "tableta de luz "
++  },
++  {
++    "id": "9a921722-11e6-4a5b-84d7-43235aeddd2e",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 2250,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "pasaelastico harry potter "
++  },
++  {
++    "id": "ae5538ec-3459-463c-879f-1ed28a59950b",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 2250,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "dijes acrilicos "
++  },
++  {
++    "id": "edd143e5-6576-4138-91c6-9a22b982877c",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 9860,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "laminado frio transparente "
++  },
++  {
++    "id": "0da37b8b-0957-4e99-8b24-21d51ed4f7ec",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 9860,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "laminado frio corazon "
++  },
++  {
++    "id": "abcfca3e-082d-4adc-a645-8edf6b8a2d51",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 9860,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "laminado frio estrella "
++  },
++  {
++    "id": "41b34672-f76a-43d1-8fc8-7a4c95d25600",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 9860,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "laminado frio vidrio roto "
++  },
++  {
++    "id": "961760e1-f37b-4aba-9bdc-742b74686be4",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 5400,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "anillo 32 mm  - 5 unidades "
++  },
++  {
++    "id": "ac71d296-6015-4122-b853-ff1b05b19e90",
++    "date": "2026-02-14T03:00:00.000Z",
++    "amount": 25200,
++    "type": "GASTO",
++    "category": "Papelería/Insumos",
++    "description": "7 anillos, de 16 mm, 19 mm, 22 mm, 25 mm "
++  },
++  {
++    "id": "10de3a6a-1ce9-4c33-aa20-845e9847723e",
++    "date": "2026-02-21T03:00:00.000Z",
++    "amount": 8000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: libreta de comunicaciones  - Estefani Soto, fonoaudiologa "
++  },
++  {
++    "id": "fe725c86-fc6a-4f07-891e-e40cae899b79",
++    "date": "2026-02-21T03:00:00.000Z",
++    "amount": 5000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: etiquetas escolares  - estefani fonoaudiologa "
++  },
++  {
++    "id": "e3793093-54ff-482b-a462-55afe623f763",
++    "date": "2026-02-26T03:00:00.000Z",
++    "amount": 6000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: etiqueta escolar  - mamá bruno farias "
++  },
++  {
++    "id": "f62608b0-b218-42fa-8684-c2fb025e3ce8",
++    "date": "2026-02-26T03:00:00.000Z",
++    "amount": 5000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Etiquetas  - Carito nobel "
++  },
++  {
++    "id": "d86ff1f4-11d4-4d92-9877-71382b45c2cc",
++    "date": "2026-03-01T03:00:00.000Z",
++    "amount": 10000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Etiqueta - Naty hernandez "
++  },
++  {
++    "id": "ce8aa1bf-2861-4197-80ea-0cf0be8cbc72",
++    "date": "2026-03-01T03:00:00.000Z",
++    "amount": 10000,
++    "type": "VENTA",
++    "category": "Agenda Personalizada",
++    "description": "Venta: Etiquetas spiderman - Naty hernandez"
++  }
++]
+\ No newline at end of file
+diff --git a/services/sheetService.ts b/services/sheetService.ts
+index 18df489..b769d5e 100644
+--- a/services/sheetService.ts
++++ b/services/sheetService.ts
+@@ -1,9 +1,9 @@
++import { Transaction, Order, Material, ProductConfig, InventoryLog } from '../types';
+ 
+-import { Transaction, Order } from '../types';
+-
+-const API_URL = 'https://script.google.com/macros/s/AKfycbxLE10gKyrvFiS0UjF1MoOUOPjXb91V-SBTSDZ_NdpeCLD4uEU_7vZvxdqXUG3BEi-G/exec';
++const API_URL = 'https://script.google.com/macros/s/AKfycbztGCKg5Sqz2Bl7QqSecB_4JXyTHK_vNWXHbm4hL5egDs5WfWMG2UWCHrcMDE_rRq-I/exec';
+ 
+ export const sheetService = {
++    // ---------------- TRANSACTIONS ----------------
+     async getTransactions(): Promise<Transaction[]> {
+         try {
+             const response = await fetch(API_URL, {
+@@ -13,7 +13,6 @@ export const sheetService = {
+             });
+             if (!response.ok) return [];
+             const data = await response.json();
+-            // Mapeamos claves en minúsculas del Apps Script a camelCase
+             return data.map((t: any) => {
+                 const rawType = String(t.type || '').toUpperCase();
+                 let normalizedType = rawType;
+@@ -37,14 +36,13 @@ export const sheetService = {
+ 
+     async addTransaction(transaction: Transaction): Promise<boolean> {
+         try {
+-            // ALINEADO CON EXCEL: id, date, amount, type, category, description
+             const dataToSave = {
+                 id: transaction.id,
+-                date: transaction.date,        // Columna B
+-                amount: transaction.amount,    // Columna C
+-                type: transaction.type,        // Columna D
+-                category: transaction.category,// Columna E
+-                description: transaction.description // Columna F
++                date: transaction.date,
++                amount: transaction.amount,
++                type: transaction.type,
++                category: transaction.category,
++                description: transaction.description
+             };
+             const response = await fetch(API_URL, {
+                 method: 'POST',
+@@ -58,6 +56,22 @@ export const sheetService = {
+         }
+     },
+ 
++    async deleteTransaction(id: string): Promise<boolean> {
++        try {
++            const idToSend = /^\d+$/.test(id) ? Number(id) : id;
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({ action: 'deleteTransaction', data: { id: idToSend } }),
++            });
++            return response.ok;
++        } catch (error) {
++            console.error('Error in deleteTransaction:', error);
++            return false;
++        }
++    },
++
++    // ---------------- ORDERS ----------------
+     async getOrders(): Promise<Order[]> {
+         try {
+             const response = await fetch(API_URL, {
+@@ -67,7 +81,6 @@ export const sheetService = {
+             });
+             if (!response.ok) return [];
+             const data = await response.json();
+-            // Mapeamos las claves en minúsculas del Apps Script a las camelCase de TypeScript
+             return data.map((o: any) => ({
+                 id: String(o.id),
+                 clientName: o.clientname,
+@@ -87,7 +100,6 @@ export const sheetService = {
+ 
+     async addOrder(order: Order): Promise<boolean> {
+         try {
+-            // Normalizamos data
+             const dataToSave = {
+                 id: order.id,
+                 clientname: order.clientName,
+@@ -114,7 +126,7 @@ export const sheetService = {
+     async updateOrder(order: Order): Promise<boolean> {
+         try {
+             const dataToSave = {
+-                id: order.id,
++                id: /^\d+$/.test(order.id) ? Number(order.id) : order.id,
+                 clientname: order.clientName,
+                 producttype: order.productType,
+                 value: order.value,
+@@ -138,10 +150,11 @@ export const sheetService = {
+ 
+     async deleteOrder(id: string): Promise<boolean> {
+         try {
++            const idToSend = /^\d+$/.test(id) ? Number(id) : id;
+             const response = await fetch(API_URL, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'text/plain' },
+-                body: JSON.stringify({ action: 'deleteOrder', data: { id } }),
++                body: JSON.stringify({ action: 'deleteOrder', data: { id: idToSend } }),
+             });
+             return response.ok;
+         } catch (error) {
+@@ -150,16 +163,219 @@ export const sheetService = {
+         }
+     },
+ 
+-    async deleteTransaction(id: string): Promise<boolean> {
++    // ---------------- MATERIALS ----------------
++    async getMaterials(): Promise<Material[]> {
+         try {
+             const response = await fetch(API_URL, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'text/plain' },
+-                body: JSON.stringify({ action: 'deleteTransaction', data: { id } }),
++                body: JSON.stringify({ action: 'getMaterials' }),
++            });
++            if (!response.ok) return [];
++            const data = await response.json();
++            return data.map((m: any) => ({
++                id: String(m.id),
++                name: String(m.name || ''),
++                quantity: Number(m.quantity || 0),
++                unit: String(m.unit || ''),
++                costPerUnit: Number(m.costperunit || 0),
++                minWarning: Number(m.minwarning || 0)
++            }));
++        } catch (error) {
++            console.error('Error in getMaterials:', error);
++            return [];
++        }
++    },
++
++    async addMaterial(material: Material): Promise<boolean> {
++        try {
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({
++                    action: 'addMaterial', data: {
++                        id: material.id,
++                        name: material.name,
++                        quantity: material.quantity,
++                        unit: material.unit,
++                        costperunit: material.costPerUnit,
++                        minwarning: material.minWarning
++                    }
++                }),
+             });
+             return response.ok;
+         } catch (error) {
+-            console.error('Error in deleteTransaction:', error);
++            console.error('Error in addMaterial:', error);
++            return false;
++        }
++    },
++
++    async updateMaterial(material: Material): Promise<boolean> {
++        try {
++            const idToSend = /^\d+$/.test(material.id) ? Number(material.id) : material.id;
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({
++                    action: 'updateMaterial', data: {
++                        id: idToSend,
++                        name: material.name,
++                        quantity: material.quantity,
++                        unit: material.unit,
++                        costperunit: material.costPerUnit,
++                        minwarning: material.minWarning
++                    }
++                }),
++            });
++            return response.ok;
++        } catch (error) {
++            console.error('Error in updateMaterial:', error);
++            return false;
++        }
++    },
++
++    async deleteMaterial(id: string): Promise<boolean> {
++        try {
++            const idToSend = /^\d+$/.test(id) ? Number(id) : id;
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({ action: 'deleteMaterial', data: { id: idToSend } }),
++            });
++            return response.ok;
++        } catch (error) {
++            console.error('Error in deleteMaterial:', error);
++            return false;
++        }
++    },
++
++    // ---------------- PRODUCTS (RECETAS) ----------------
++    async getProducts(): Promise<ProductConfig[]> {
++        try {
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({ action: 'getProducts' }),
++            });
++            if (!response.ok) return [];
++            const data = await response.json();
++            return data.map((p: any) => ({
++                id: String(p.id),
++                name: String(p.name || ''),
++                materials: Array.isArray(p.materials) ? p.materials : [],
++                productionCost: Number(p.productioncost || 0),
++                profitMargin: Number(p.profitmargin || 0),
++                salePrice: Number(p.saleprice || 0)
++            }));
++        } catch (error) {
++            console.error('Error in getProducts:', error);
++            return [];
++        }
++    },
++
++    async addProduct(product: ProductConfig): Promise<boolean> {
++        try {
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({
++                    action: 'addProduct', data: {
++                        id: product.id,
++                        name: product.name,
++                        materials: product.materials,
++                        productioncost: product.productionCost,
++                        profitmargin: product.profitMargin,
++                        saleprice: product.salePrice
++                    }
++                }),
++            });
++            return response.ok;
++        } catch (error) {
++            console.error('Error in addProduct:', error);
++            return false;
++        }
++    },
++
++    async updateProduct(product: ProductConfig): Promise<boolean> {
++        try {
++            const idToSend = /^\d+$/.test(product.id) ? Number(product.id) : product.id;
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({
++                    action: 'updateProduct', data: {
++                        id: idToSend,
++                        name: product.name,
++                        materials: product.materials,
++                        productioncost: product.productionCost,
++                        profitmargin: product.profitMargin,
++                        saleprice: product.salePrice
++                    }
++                }),
++            });
++            return response.ok;
++        } catch (error) {
++            console.error('Error in updateProduct:', error);
++            return false;
++        }
++    },
++
++    async deleteProduct(id: string): Promise<boolean> {
++        try {
++            const idToSend = /^\d+$/.test(id) ? Number(id) : id;
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({ action: 'deleteProduct', data: { id: idToSend } }),
++            });
++            return response.ok;
++        } catch (error) {
++            console.error('Error in deleteProduct:', error);
++            return false;
++        }
++    },
++
++    // ---------------- INVENTORY LOGS ----------------
++    async getInventoryLogs(): Promise<InventoryLog[]> {
++        try {
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({ action: 'getInventoryLogs' }),
++            });
++            if (!response.ok) return [];
++            const data = await response.json();
++            return data.map((l: any) => ({
++                id: String(l.id),
++                date: String(l.date || ''),
++                materialId: String(l.materialid || ''),
++                quantityChange: Number(l.quantitychange || 0),
++                reason: String(l.reason || '')
++            }));
++        } catch (error) {
++            console.error('Error in getInventoryLogs:', error);
++            return [];
++        }
++    },
++
++    async addInventoryLog(log: InventoryLog): Promise<boolean> {
++        try {
++            const response = await fetch(API_URL, {
++                method: 'POST',
++                headers: { 'Content-Type': 'text/plain' },
++                body: JSON.stringify({
++                    action: 'addInventoryLog', data: {
++                        id: log.id,
++                        date: log.date,
++                        materialid: log.materialId,
++                        quantitychange: log.quantityChange,
++                        reason: log.reason
++                    }
++                }),
++            });
++            return response.ok;
++        } catch (error) {
++            console.error('Error in addInventoryLog:', error);
+             return false;
+         }
+     }
+diff --git a/types.ts b/types.ts
+index 33c7877..abd9757 100644
+--- a/types.ts
++++ b/types.ts
+@@ -22,9 +22,38 @@ export interface Order {
+   createdAt: string;
+ }
+ 
++export interface Material {
++  id: string;
++  name: string;
++  quantity: number;
++  unit: string;
++  costPerUnit: number;
++  minWarning: number;
++}
++
++export interface ProductConfig {
++  id: string;
++  name: string;
++  materials: { materialId: string; quantity: number }[];
++  productionCost: number;
++  profitMargin: number;
++  salePrice: number;
++}
++
++export interface InventoryLog {
++  id: string;
++  date: string;
++  materialId: string;
++  quantityChange: number;
++  reason: string;
++}
++
+ export interface BusinessState {
+   transactions: Transaction[];
+   orders: Order[];
++  materials: Material[];
++  products: ProductConfig[];
++  inventoryLogs: InventoryLog[];
+ }
+ 
+ export const CATEGORIES = {
+
+commit 4093b342af0a1252874898f0b5b34d72e714d071
+Author: Your Name <you@example.com>
+Date:   Mon Mar 2 21:55:35 2026 -0300
+
+    fix: resolve incorrect mapping and number format for ventas yeca
+
+diff --git a/services/sheetService.ts b/services/sheetService.ts
+index 306108a..18df489 100644
+--- a/services/sheetService.ts
++++ b/services/sheetService.ts
+@@ -14,14 +14,21 @@ export const sheetService = {
+             if (!response.ok) return [];
+             const data = await response.json();
+             // Mapeamos claves en minúsculas del Apps Script a camelCase
+-            return data.map((t: any) => ({
+-                id: t.id,
+-                type: t.type,
+-                amount: Number(t.amount),
+-                description: t.description,
+-                category: t.category,
+-                date: t.date
+-            }));
++            return data.map((t: any) => {
++                const rawType = String(t.type || '').toUpperCase();
++                let normalizedType = rawType;
++                if (rawType.startsWith('VENTA') || rawType.startsWith('INGRE')) normalizedType = 'VENTA';
++                else if (rawType.startsWith('GAST') || rawType.startsWith('EGRE') || rawType.startsWith('COMPR')) normalizedType = 'GASTO';
++
++                return {
++                    id: String(t.id),
++                    type: normalizedType as 'VENTA' | 'GASTO',
++                    amount: typeof t.amount === 'number' ? t.amount : Number(String(t.amount || '0').replace(/[^\d-]/g, '')),
++                    description: t.description,
++                    category: t.category,
++                    date: t.date
++                };
++            });
+         } catch (error) {
+             console.error('Error in getTransactions:', error);
+             return [];
+@@ -62,14 +69,14 @@ export const sheetService = {
+             const data = await response.json();
+             // Mapeamos las claves en minúsculas del Apps Script a las camelCase de TypeScript
+             return data.map((o: any) => ({
+-                id: o.id,
++                id: String(o.id),
+                 clientName: o.clientname,
+                 productType: o.producttype,
+-                value: Number(o.value),
++                value: typeof o.value === 'number' ? o.value : Number(String(o.value || '0').replace(/[^\d-]/g, '')),
+                 details: o.details,
+                 deliveryDate: o.deliverydate,
+                 status: o.status,
+-                paid: o.paid,
++                paid: o.paid === true || String(o.paid).toLowerCase() === 'true',
+                 createdAt: o.createdat
+             }));
+         } catch (error) {

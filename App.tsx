@@ -10,6 +10,7 @@ import Insights from './components/Insights';
 import OrderForm from './components/OrderForm';
 import OrderTable from './components/OrderTable';
 import InventoryAlertModal from './components/InventoryAlertModal';
+import HelpModal from './components/HelpModal';
 import { PremiumBackground as InfiniteGrid } from './components/ui/infinite-grid-integration';
 import { sheetService } from './services/sheetService';
 
@@ -19,6 +20,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'transactions' | 'orders' | 'catalog' | 'inventory'>('dashboard');
   const [modalType, setModalType] = useState<'transaction' | 'order' | null>(null);
   const [showInventoryAlerts, setShowInventoryAlerts] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
@@ -400,6 +402,16 @@ const App: React.FC = () => {
               >
                 Pedidos
               </button>
+              <div className="w-px h-6 bg-slate-300 mx-1"></div>
+              <button
+                onClick={() => setShowHelpModal(true)}
+                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors group"
+                title="Manual de Usuario"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 group-hover:scale-110 transition-transform">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+                </svg>
+              </button>
             </nav>
           </div>
         </header>
@@ -572,6 +584,11 @@ const App: React.FC = () => {
             products={state.products}
             onClose={() => setShowInventoryAlerts(false)}
           />
+        )}
+
+        {/* Help Manual Modal */}
+        {showHelpModal && (
+          <HelpModal onClose={() => setShowHelpModal(false)} />
         )}
       </div>
     </div>
