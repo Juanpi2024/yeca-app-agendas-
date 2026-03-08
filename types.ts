@@ -22,9 +22,38 @@ export interface Order {
   createdAt: string;
 }
 
+export interface Material {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  costPerUnit: number;
+  minWarning: number;
+}
+
+export interface ProductConfig {
+  id: string;
+  name: string;
+  materials: { materialId: string; quantity: number }[];
+  productionCost: number;
+  profitMargin: number;
+  salePrice: number;
+}
+
+export interface InventoryLog {
+  id: string;
+  date: string;
+  materialId: string;
+  quantityChange: number;
+  reason: string;
+}
+
 export interface BusinessState {
   transactions: Transaction[];
   orders: Order[];
+  materials: Material[];
+  products: ProductConfig[];
+  inventoryLogs: InventoryLog[];
 }
 
 export const CATEGORIES = {

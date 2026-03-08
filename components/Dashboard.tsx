@@ -1,36 +1,82 @@
 
 import React, { useState } from 'react';
-import { Transaction } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
+import { Transaction, Order } from '../types';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, LineChart, Line } from 'recharts';
 import { generateEmailReport } from '../services/geminiService';
+import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Package, FileText, ArrowUpRight } from 'lucide-react';
 
 interface DashboardProps {
   transactions: Transaction[];
+  orders: Order[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, orders }) => {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const stats = React.useMemo(() => {
     const sales = transactions.filter(t => t.type === 'VENTA').reduce((acc, curr) => acc + curr.amount, 0);
     const expenses = transactions.filter(t => t.type === 'GASTO').reduce((acc, curr) => acc + curr.amount, 0);
+    const pendingOrders = orders.filter(o => o.status === 'PENDIENTE').length;
+    const deliveredOrders = orders.filter(o => o.status === 'ENTREGADO').length;
+
     return {
       sales,
       expenses,
-      profit: sales - expenses
+      profit: sales - expenses,
+      pendingOrders,
+      deliveredOrders
     };
+  }, [transactions, orders]);
+
+  const monthlyData = React.useMemo(() => {
+    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const currentYear = new Date().getFullYear();
+
+    const data = months.map((month, idx) => ({
+      name: month,
+      ventas: 0,
+      gastos: 0,
+      balance: 0
+    }));
+
+    transactions.forEach(t => {
+      const date = new Date(t.date);
+      if (date.getFullYear() === currentYear) {
+        const mIdx = date.getMonth();
+        if (t.type === 'VENTA') data[mIdx].ventas += t.amount;
+        else data[mIdx].gastos += t.amount;
+        data[mIdx].balance = data[mIdx].ventas - data[mIdx].gastos;
+      }
+    });
+
+    return data;
   }, [transactions]);
+
+  const topProducts = React.useMemo(() => {
+    const counts: Record<string, { count: number, revenue: number }> = {};
+    orders.forEach(o => {
+      if (!counts[o.productType]) counts[o.productType] = { count: 0, revenue: 0 };
+      counts[o.productType].count++;
+      counts[o.productType].revenue += o.value;
+    });
+    return Object.entries(counts)
+      .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [orders]);
+
+  const COLORS = ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#64748b'];
 
   const handleSendReport = async () => {
     if (transactions.length === 0) return;
-    
+
     setIsGenerating(true);
     try {
       const reportContent = await generateEmailReport(transactions);
       const email = 'profeyeca2021@gmail.com';
       const subject = encodeURIComponent('Reporte Contable - Agendes Yeca 2025');
       const body = encodeURIComponent(reportContent);
-      
+
       window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
     } catch (error) {
       alert("Hubo un error al preparar el reporte.");
@@ -39,117 +85,185 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
     }
   };
 
-  const chartData = React.useMemo(() => {
-    return [
-      { name: 'Ventas', value: stats.sales, color: '#f43f5e' },
-      { name: 'Gastos', value: stats.expenses, color: '#64748b' }
-    ];
-  }, [stats]);
-
-  const expenseData = React.useMemo(() => {
-    const groups: Record<string, number> = {};
-    transactions.filter(t => t.type === 'GASTO').forEach(t => {
-      groups[t.category] = (groups[t.category] || 0) + t.amount;
-    });
-    return Object.entries(groups).map(([name, value]) => ({ name, value }));
-  }, [transactions]);
-
-  const COLORS = ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#64748b'];
-
   return (
-    <div className="space-y-6">
-      {/* Header with Report Action */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-8 pb-10">
+      {/* Executive Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-1">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Panel de Control</h2>
-          <p className="text-slate-500 text-sm">Resumen financiero de Agendes Yeca 2025</p>
+          <h2 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+            Dashboard Ejecutivo
+            <span className="bg-rose-100 text-rose-600 text-xs px-2 py-1 rounded-full uppercase tracking-widest font-bold">2025</span>
+          </h2>
+          <p className="text-slate-500 font-medium mt-1">Análisis profundo y estado financiero del negocio.</p>
         </div>
-        <button
-          onClick={handleSendReport}
-          disabled={isGenerating || transactions.length === 0}
-          className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-slate-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isGenerating ? (
-            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-            </svg>
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleSendReport}
+            disabled={isGenerating || transactions.length === 0}
+            className="flex items-center gap-3 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-xl shadow-slate-200 active:scale-95 disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : <FileText size={20} />}
+            {isGenerating ? 'Generando...' : 'Reporte Contable'}
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Overlays */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Balance Card - Premium */}
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+            <DollarSign size={80} />
+          </div>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Balance General</p>
+          <h3 className="text-3xl font-black mb-4">${stats.profit.toLocaleString()}</h3>
+          <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold bg-white/5 w-fit px-2 py-1 rounded-lg">
+            <TrendingUp size={14} />
+            Negocio Saludable
+          </div>
+        </div>
+
+        {/* Sales Card */}
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-rose-50 text-rose-500 rounded-2xl">
+              <ShoppingBag size={24} />
+            </div>
+            <span className="text-emerald-500 font-bold text-xs flex items-center">+ Ingresos</span>
+          </div>
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Ventas Totales</p>
+            <h3 className="text-2xl font-black text-slate-800">${stats.sales.toLocaleString()}</h3>
+          </div>
+        </div>
+
+        {/* Expenses Card */}
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-slate-50 text-slate-500 rounded-2xl">
+              <TrendingDown size={24} />
+            </div>
+            <span className="text-rose-400 font-bold text-xs flex items-center">- Gastos</span>
+          </div>
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Egresos Totales</p>
+            <h3 className="text-2xl font-black text-slate-800">${stats.expenses.toLocaleString()}</h3>
+          </div>
+        </div>
+
+        {/* Orders Card */}
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl">
+              <Package size={24} />
+            </div>
+            <span className="text-slate-400 font-bold text-xs">{stats.deliveredOrders} Listos</span>
+          </div>
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Entregados</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.deliveredOrders} <span className="text-xs font-medium text-slate-400">pedidos</span></h3>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Evolution Chart */}
+        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
+          <div className="flex justify-between items-center mb-8">
+            <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight">Evolución Anual</h4>
+            <div className="flex gap-4 text-[10px] font-bold uppercase">
+              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ventas</div>
+              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Gastos</div>
+            </div>
+          </div>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={monthlyData}>
+                <defs>
+                  <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorGastos" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.1} />
+                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', fontSize: '12px', fontWeight: 'bold' }}
+                />
+                <Area type="monotone" dataKey="ventas" stroke="#10b981" fillOpacity={1} fill="url(#colorVentas)" strokeWidth={3} />
+                <Area type="monotone" dataKey="gastos" stroke="#f43f5e" fillOpacity={1} fill="url(#colorGastos)" strokeWidth={3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Ranking List */}
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+          <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight mb-6">Top Productos</h4>
+          <div className="space-y-4">
+            {topProducts.length > 0 ? topProducts.map((p, i) => (
+              <div key={i} className="flex items-center justify-between group hover:bg-slate-50 p-2 rounded-2xl transition-all cursor-default">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {i + 1}
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-700 text-sm leading-tight">{p.name}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">{p.count} vendidos</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-slate-800 text-sm">${p.revenue.toLocaleString()}</p>
+                  <ArrowUpRight className="inline-block text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" size={14} />
+                </div>
+              </div>
+            )) : (
+              <p className="text-center text-slate-400 italic text-sm py-10">Sin pedidos suficientes...</p>
+            )}
+          </div>
+
+          {topProducts.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-slate-100">
+              <div className="bg-rose-50 rounded-2xl p-4 flex items-center gap-4">
+                <div className="bg-white p-2 rounded-xl text-rose-500 shadow-sm">
+                  <TrendingUp size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-rose-500 font-black uppercase">Mejor Producto</p>
+                  <p className="text-sm font-bold text-slate-800">{topProducts[0].name}</p>
+                </div>
+              </div>
+            </div>
           )}
-          {isGenerating ? 'Generando Reporte...' : 'Enviar Reporte al Correo'}
-        </button>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-2xl border border-rose-100 shadow-sm">
-          <p className="text-sm font-medium text-rose-500 mb-1">Total Ventas</p>
-          <h3 className="text-3xl font-bold text-slate-800">${stats.sales.toLocaleString()}</h3>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-          <p className="text-sm font-medium text-slate-500 mb-1">Total Gastos</p>
-          <h3 className="text-3xl font-bold text-slate-800">${stats.expenses.toLocaleString()}</h3>
-        </div>
-        <div className={`${stats.profit >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'} p-6 rounded-2xl border shadow-sm`}>
-          <p className={`text-sm font-medium ${stats.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'} mb-1`}>Utilidad Neta</p>
-          <h3 className={`text-3xl font-bold ${stats.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>${stats.profit.toLocaleString()}</h3>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Main Comparison Chart */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-[350px]">
-          <h4 className="font-bold text-slate-700 mb-6">Comparativa General</h4>
-          <ResponsiveContainer width="100%" height="80%">
-            <BarChart data={chartData}>
+      {/* Cash Flow Evolution */}
+      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+        <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight mb-8">Flujo de Caja Mensual (Balance)</h4>
+        <div className="h-[250px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
-              <Tooltip 
-                cursor={{fill: '#f8fafc'}}
-                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)'}}
-              />
-              <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={60}>
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+              <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }} />
+              <Bar dataKey="balance" radius={[6, 6, 6, 6]}>
+                {monthlyData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.balance >= 0 ? '#10b981' : '#f43f5e'} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
-
-        {/* Expense Distribution */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-[350px]">
-          <h4 className="font-bold text-slate-700 mb-6">Distribución de Gastos</h4>
-          {expenseData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="80%">
-              <PieChart>
-                <Pie
-                  data={expenseData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {expenseData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)'}}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full flex items-center justify-center text-slate-400 italic text-sm">
-              No hay gastos registrados para analizar
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -1,20 +1,24 @@
 
 import React, { useState, useEffect } from 'react';
-import { Transaction, Order, BusinessState } from './types';
+import { Transaction, Order, BusinessState, Material, ProductConfig, InventoryLog } from './types';
 import Dashboard from './components/Dashboard';
+import Catalog from './components/Catalog';
+import Inventory from './components/Inventory';
 import TransactionForm from './components/TransactionForm';
 import TransactionTable from './components/TransactionTable';
 import Insights from './components/Insights';
 import OrderForm from './components/OrderForm';
 import OrderTable from './components/OrderTable';
+import InventoryAlertModal from './components/InventoryAlertModal';
 import { PremiumBackground as InfiniteGrid } from './components/ui/infinite-grid-integration';
 import { sheetService } from './services/sheetService';
 
 const App: React.FC = () => {
-  const [state, setState] = useState<BusinessState>({ transactions: [], orders: [] });
+  const [state, setState] = useState<BusinessState>({ transactions: [], orders: [], materials: [], products: [], inventoryLogs: [] });
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'dashboard' | 'transactions' | 'orders'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'transactions' | 'orders' | 'catalog' | 'inventory'>('dashboard');
   const [modalType, setModalType] = useState<'transaction' | 'order' | null>(null);
+  const [showInventoryAlerts, setShowInventoryAlerts] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
@@ -25,14 +29,20 @@ const App: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [transactions, orders] = await Promise.all([
+        const [transactions, orders, materials, products, logs] = await Promise.all([
           sheetService.getTransactions(),
-          sheetService.getOrders()
+          sheetService.getOrders(),
+          sheetService.getMaterials(),
+          sheetService.getProducts(),
+          sheetService.getInventoryLogs()
         ]);
 
         setState({
           transactions: transactions || [],
-          orders: orders || []
+          orders: orders || [],
+          materials: materials || [],
+          products: products || [],
+          inventoryLogs: logs || []
         });
       } catch (error) {
         console.error("Error loading data:", error);
@@ -175,6 +185,16 @@ const App: React.FC = () => {
     const order = state.orders.find(o => o.id === orderId);
     if (!order || processingIds.has(orderId)) return;
 
+    // ----- LOGICA INVENTARIO AUTOMÁTICO -----
+    if (order.status !== 'ENTREGADO' && newStatus === 'ENTREGADO') {
+      const product = state.products.find(p => p.name === order.productType);
+      if (product) {
+        for (const mat of product.materials) {
+          await removeStock(mat.materialId, mat.quantity, `Uso en Pedido (Producto: ${product.name})`);
+        }
+      }
+    }
+
     setProcessingIds(prev => new Set(prev).add(orderId));
     const updatedOrder = { ...order, status: newStatus };
 
@@ -231,6 +251,96 @@ const App: React.FC = () => {
     }
   };
 
+  // ---------------- CATALOG ACTIONS ----------------
+  const addMaterial = async (m: Omit<Material, 'id'>) => {
+    const id = crypto.randomUUID();
+    const newMat = { ...m, id };
+    setState(prev => ({ ...prev, materials: [...prev.materials, newMat] }));
+    await sheetService.addMaterial(newMat);
+  };
+
+  const updateMaterial = async (m: Material) => {
+    setState(prev => ({
+      ...prev, materials: prev.materials.map(x => x.id === m.id ? m : x)
+    }));
+    await sheetService.updateMaterial(m);
+  };
+
+  const deleteMaterial = async (id: string) => {
+    setState(prev => ({
+      ...prev, materials: prev.materials.filter(x => x.id !== id)
+    }));
+    await sheetService.deleteMaterial(id);
+  };
+
+  const addProduct = async (p: Omit<ProductConfig, 'id'>) => {
+    const id = crypto.randomUUID();
+    const newProd = { ...p, id };
+    setState(prev => ({ ...prev, products: [...prev.products, newProd] }));
+    await sheetService.addProduct(newProd);
+  };
+
+  const updateProduct = async (p: ProductConfig) => {
+    setState(prev => ({
+      ...prev, products: prev.products.map(x => x.id === p.id ? p : x)
+    }));
+    await sheetService.updateProduct(p);
+  };
+
+  const deleteProduct = async (id: string) => {
+    setState(prev => ({
+      ...prev, products: prev.products.filter(x => x.id !== id)
+    }));
+    await sheetService.deleteProduct(id);
+  };
+
+  // ---------------- INVENTORY ACTIONS ----------------
+  const addStock = async (materialId: string, quantity: number, cost: number, registerExpense: boolean) => {
+    const logId = crypto.randomUUID();
+    const log: InventoryLog = {
+      id: logId,
+      date: new Date().toISOString(),
+      materialId,
+      quantityChange: quantity,
+      reason: 'Compra / Reabastecimiento'
+    };
+
+    setState(prev => {
+      const mats = prev.materials.map(m => m.id === materialId ? { ...m, quantity: m.quantity + quantity } : m);
+      return { ...prev, materials: mats, inventoryLogs: [log, ...prev.inventoryLogs] };
+    });
+
+    await sheetService.addInventoryLog(log);
+
+    if (registerExpense && cost > 0) {
+      await addTransaction({
+        type: 'GASTO',
+        amount: cost,
+        description: `Compra insumos (Inventario)`,
+        category: 'Papelería/Insumos',
+        date: new Date().toISOString().split('T')[0]
+      });
+    }
+  };
+
+  const removeStock = async (materialId: string, quantity: number, reason: string) => {
+    const logId = crypto.randomUUID();
+    const log: InventoryLog = {
+      id: logId,
+      date: new Date().toISOString(),
+      materialId,
+      quantityChange: -Math.abs(quantity),
+      reason
+    };
+
+    setState(prev => {
+      const mats = prev.materials.map(m => m.id === materialId ? { ...m, quantity: m.quantity - Math.abs(quantity) } : m);
+      return { ...prev, materials: mats, inventoryLogs: [log, ...prev.inventoryLogs] };
+    });
+
+    await sheetService.addInventoryLog(log);
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden bg-background">
       <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
@@ -249,12 +359,34 @@ const App: React.FC = () => {
               </div>
               <h1 className="text-xl font-bold text-slate-800">Agendes Yeca <span className="text-rose-500">2025</span></h1>
             </div>
-            <nav className="flex gap-1 bg-slate-100 p-1 rounded-full">
+            <nav className="flex gap-1 bg-slate-100 p-1 rounded-full items-center">
               <button
                 onClick={() => setView('dashboard')}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'dashboard' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 Resumen
+              </button>
+              <button
+                onClick={() => setShowInventoryAlerts(true)}
+                className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white shadow-md shadow-rose-200 hover:bg-rose-600 transition-all active:scale-95"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Alertas Stock
+              </button>
+              <div className="w-px h-6 bg-slate-300 mx-1"></div>
+              <button
+                onClick={() => setView('catalog')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'catalog' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Catálogo y Costos
+              </button>
+              <button
+                onClick={() => setView('inventory')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${view === 'inventory' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Inventario
               </button>
               <button
                 onClick={() => setView('transactions')}
@@ -311,7 +443,7 @@ const App: React.FC = () => {
           ) : (
             view === 'dashboard' ? (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <Dashboard transactions={state.transactions} />
+                <Dashboard transactions={state.transactions} orders={state.orders} />
                 <Insights transactions={state.transactions} />
               </div>
             ) : view === 'transactions' ? (
@@ -319,6 +451,28 @@ const App: React.FC = () => {
                 <TransactionTable
                   transactions={state.transactions}
                   onDelete={deleteTransaction}
+                />
+              </div>
+            ) : view === 'catalog' ? (
+              <div className="animate-in fade-in duration-500">
+                <Catalog
+                  materials={state.materials}
+                  products={state.products}
+                  onAddMaterial={addMaterial}
+                  onUpdateMaterial={updateMaterial}
+                  onDeleteMaterial={deleteMaterial}
+                  onAddProduct={addProduct}
+                  onUpdateProduct={updateProduct}
+                  onDeleteProduct={deleteProduct}
+                />
+              </div>
+            ) : view === 'inventory' ? (
+              <div className="animate-in fade-in duration-500">
+                <Inventory
+                  materials={state.materials}
+                  logs={state.inventoryLogs}
+                  onAddStock={addStock}
+                  onRemoveStock={removeStock}
                 />
               </div>
             ) : (
@@ -393,6 +547,7 @@ const App: React.FC = () => {
                   <TransactionForm onSubmit={addTransaction} onCancel={() => setModalType(null)} />
                 ) : (
                   <OrderForm
+                    products={state.products}
                     onSubmit={(data) => {
                       if (editingOrder) {
                         updateOrder({ ...editingOrder, ...data });
@@ -408,6 +563,15 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Inventory Alert Modal */}
+        {showInventoryAlerts && (
+          <InventoryAlertModal
+            materials={state.materials}
+            products={state.products}
+            onClose={() => setShowInventoryAlerts(false)}
+          />
         )}
       </div>
     </div>

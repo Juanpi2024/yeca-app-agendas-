@@ -1,14 +1,15 @@
 
 import React, { useState } from 'react';
-import { Order } from '../types';
+import { Order, ProductConfig } from '../types';
 
 interface OrderFormProps {
+    products?: ProductConfig[];
     onSubmit: (data: Omit<Order, 'id' | 'status' | 'paid' | 'createdAt'>) => void;
     onCancel: () => void;
     initialData?: Order;
 }
 
-const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel, initialData }) => {
+const OrderForm: React.FC<OrderFormProps> = ({ products = [], onSubmit, onCancel, initialData }) => {
     const [clientName, setClientName] = useState(initialData?.clientName || '');
     const [productType, setProductType] = useState(initialData?.productType || '');
     const [value, setValue] = useState(initialData?.value?.toString() || '');
@@ -25,6 +26,17 @@ const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel, initialData }
             details,
             deliveryDate
         });
+    };
+
+    const handleProductChange = (val: string) => {
+        setProductType(val);
+        // Autofill logic
+        if (!initialData && (!value || value === '0')) {
+            const match = products.find(p => p.name.toLowerCase() === val.toLowerCase());
+            if (match) {
+                setValue(String(match.salePrice));
+            }
+        }
     };
 
     return (
@@ -47,11 +59,17 @@ const OrderForm: React.FC<OrderFormProps> = ({ onSubmit, onCancel, initialData }
                     <input
                         type="text"
                         required
+                        list="product-suggestions"
                         value={productType}
-                        onChange={(e) => setProductType(e.target.value)}
+                        onChange={(e) => handleProductChange(e.target.value)}
                         placeholder="Ej: Agenda Pro"
                         className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all"
                     />
+                    <datalist id="product-suggestions">
+                        {products.map(p => (
+                            <option key={p.id} value={p.name} />
+                        ))}
+                    </datalist>
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Valor Pedido ($)</label>

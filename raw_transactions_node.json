@@ -1,0 +1,410 @@
+[
+  {
+    "id": "e6435e2a-be43-4e4b-81e4-42043d7f094d",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 32780,
+    "type": "GASTO",
+    "category": "Agenda Personalizada",
+    "description": "Agenda A5:= 20"
+  },
+  {
+    "id": "1de02c04-ebbd-4d31-8ace-ca1b6dc8e805",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 24990,
+    "type": "GASTO",
+    "category": "Agenda Personalizada",
+    "description": "Agenda B5: = 10"
+  },
+  {
+    "id": "a5160aa3-d21f-4cfa-8f1c-5b8ff9823d74",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 2950,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Anillo 22 mm dorado: 4 tiras"
+  },
+  {
+    "id": "4bf51c34-0685-49da-a882-50e4dd3a1fa6",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 2950,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Anillo 22 mm blanco: 4 tiras ="
+  },
+  {
+    "id": "4a05ad7a-3475-416b-b15a-a7692c662eec",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 2200,
+    "type": "GASTO",
+    "category": "Agenda Personalizada",
+    "description": "elastico glitter: 6 mm x 5 mts"
+  },
+  {
+    "id": "ea0e13fe-2342-4db5-9d18-146cb254bdc8",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 2200,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "elastico dorado: 6 mm x 5 mts ="
+  },
+  {
+    "id": "3a533350-1411-4eac-84ed-4360b22f6cab",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 3500,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "12 pasacinta + 12 circulos de resina:"
+  },
+  {
+    "id": "b321fdc7-ff58-485a-8ff9-8090b1a5b653",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 1200,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "100 ojetillos dorados:"
+  },
+  {
+    "id": "54f9ba25-3f21-4154-ba9b-0700d6b74f0b",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 3500,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "laminado holografico glitter (10 hojas):"
+  },
+  {
+    "id": "f0fc3aa3-1054-4e78-ba6e-3313297b4b24",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 11990,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "ojetilladora perforadora + 400 ojetillos:"
+  },
+  {
+    "id": "2c9f4fa9-435d-454e-b93d-4b528124a093",
+    "date": "2025-12-25T03:00:00.000Z",
+    "amount": 70000,
+    "type": "GASTO",
+    "category": "Herramientas",
+    "description": "Anilladora"
+  },
+  {
+    "id": "701061b6-aba0-4c1d-9370-e65b63a7e163",
+    "date": "2026-01-04T03:00:00.000Z",
+    "amount": 8950,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Esquineros"
+  },
+  {
+    "id": "a2421376-ae48-4ae1-90ea-d24ad52a5d35",
+    "date": "2026-01-02T03:00:00.000Z",
+    "amount": 5600,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Laminado frío transparente 20 hojas"
+  },
+  {
+    "id": "492f7a8f-e608-4013-b691-030af430b1b9",
+    "date": "2026-01-02T03:00:00.000Z",
+    "amount": 8500,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Cartón A5  50h"
+  },
+  {
+    "id": "679f6783-e62f-4969-b644-fc0857575fdf",
+    "date": "2026-01-02T03:00:00.000Z",
+    "amount": 5600,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Papel bond 106 grs"
+  },
+  {
+    "id": "7bd7b0be-4768-450f-97ef-6ca308c66e6b",
+    "date": "2026-01-02T03:00:00.000Z",
+    "amount": 6520,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Espiral plástico 16mm"
+  },
+  {
+    "id": "659103bb-43a8-4369-8d99-057c7c9c9b31",
+    "date": "2026-01-02T03:00:00.000Z",
+    "amount": 10899,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "48 hojas laminado frío holografico"
+  },
+  {
+    "id": "5d0ec9f5-222d-4996-aedd-2225cd6df9ac",
+    "date": "2026-01-04T03:00:00.000Z",
+    "amount": 8000,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Reglas de encuadernacion"
+  },
+  {
+    "id": "4eb6976e-42f0-441a-8aad-decac1e62f4e",
+    "date": "2026-01-04T03:00:00.000Z",
+    "amount": 6600,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Reglas medidora de anillos"
+  },
+  {
+    "id": "8052febe-63e8-47c6-84ce-1fe30b215d1c",
+    "date": "2026-01-04T03:00:00.000Z",
+    "amount": 7900,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "Topes para cinch"
+  },
+  {
+    "id": "6afcd3a9-3146-4f06-8402-8a7a4fb374a5",
+    "date": "2026-01-04T03:00:00.000Z",
+    "amount": 14000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Agenda - Yeca"
+  },
+  {
+    "id": "12eb8e08-a4ae-423b-88d1-b536100c43f3",
+    "date": "2026-01-04T03:00:00.000Z",
+    "amount": 8000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Libreta de comunicaciones - Juan pablo ramirez toledo "
+  },
+  {
+    "id": "a264ec61-7937-4698-8052-e1452112720b",
+    "date": "2026-01-04T03:00:00.000Z",
+    "amount": 14000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Agenda reposteria - Yeca regalo fran"
+  },
+  {
+    "id": "9feafb14-c9ad-440d-b895-b9e97b99f078",
+    "date": "2026-01-15T03:00:00.000Z",
+    "amount": 14000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Agenda personalizada  - Tia anita PIE "
+  },
+  {
+    "id": "aad1a4d4-796a-4e10-976c-8e3be6dd0c89",
+    "date": "2026-01-22T03:00:00.000Z",
+    "amount": 18000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Agenda futura abogada  - Tia cami "
+  },
+  {
+    "id": "2d77a13a-04d7-47e2-b129-3954b3bbc2eb",
+    "date": "2026-02-03T03:00:00.000Z",
+    "amount": 18000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Agenda b5 - Guisel troncoso"
+  },
+  {
+    "id": "b7dc2921-f19c-4c3b-96c5-de42a00d4986",
+    "date": "2026-02-03T03:00:00.000Z",
+    "amount": 10000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Etiquetas escolares  - Tia maria "
+  },
+  {
+    "id": "7d77f5f7-7f93-4f48-b8b6-b274e55f5723",
+    "date": "2026-02-03T03:00:00.000Z",
+    "amount": 18000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Agenda párvulos  - Katy aravena "
+  },
+  {
+    "id": "a3262112-fbb9-4fff-9b1e-2f3f32d06ca3",
+    "date": "2026-02-05T03:00:00.000Z",
+    "amount": 8000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: libreta comunciaciones  - tia maria "
+  },
+  {
+    "id": "8980106c-d84c-4e57-9d09-c202fea4fa6f",
+    "date": "2026-02-05T03:00:00.000Z",
+    "amount": 8000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: libreta comunicaciones  - tia maria "
+  },
+  {
+    "id": "38d9ca5c-2b8a-443b-b35f-9080606b47ff",
+    "date": "2026-02-09T03:00:00.000Z",
+    "amount": 18000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: agenda  - jeanette toledo "
+  },
+  {
+    "id": "156b0013-5cf5-4c23-aa40-306e624d1827",
+    "date": "2026-02-09T03:00:00.000Z",
+    "amount": 20000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Etiquetas escolares  - Verónica del 4b"
+  },
+  {
+    "id": "27a33292-a514-48f3-9488-884a93bf12bb",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 5000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: etiquetas escolares  - maricela  nobel "
+  },
+  {
+    "id": "4157cdc2-8704-4a37-84e6-b28996325e82",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 5391,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "papel  double side  glossy 260gr."
+  },
+  {
+    "id": "da618095-5e66-4bd7-9c77-fdc73e98e4f6",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 24975,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "pack agenda B5"
+  },
+  {
+    "id": "803568e8-5787-4dc9-a5b9-9c41b5c631c5",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 15300,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "pack  agenda A5"
+  },
+  {
+    "id": "fd0117de-8ef0-460d-bd45-14995208e225",
+    "date": "2026-02-13T03:00:00.000Z",
+    "amount": 13500,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "tableta de luz "
+  },
+  {
+    "id": "9a921722-11e6-4a5b-84d7-43235aeddd2e",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 2250,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "pasaelastico harry potter "
+  },
+  {
+    "id": "ae5538ec-3459-463c-879f-1ed28a59950b",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 2250,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "dijes acrilicos "
+  },
+  {
+    "id": "edd143e5-6576-4138-91c6-9a22b982877c",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 9860,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "laminado frio transparente "
+  },
+  {
+    "id": "0da37b8b-0957-4e99-8b24-21d51ed4f7ec",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 9860,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "laminado frio corazon "
+  },
+  {
+    "id": "abcfca3e-082d-4adc-a645-8edf6b8a2d51",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 9860,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "laminado frio estrella "
+  },
+  {
+    "id": "41b34672-f76a-43d1-8fc8-7a4c95d25600",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 9860,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "laminado frio vidrio roto "
+  },
+  {
+    "id": "961760e1-f37b-4aba-9bdc-742b74686be4",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 5400,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "anillo 32 mm  - 5 unidades "
+  },
+  {
+    "id": "ac71d296-6015-4122-b853-ff1b05b19e90",
+    "date": "2026-02-14T03:00:00.000Z",
+    "amount": 25200,
+    "type": "GASTO",
+    "category": "Papelería/Insumos",
+    "description": "7 anillos, de 16 mm, 19 mm, 22 mm, 25 mm "
+  },
+  {
+    "id": "10de3a6a-1ce9-4c33-aa20-845e9847723e",
+    "date": "2026-02-21T03:00:00.000Z",
+    "amount": 8000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: libreta de comunicaciones  - Estefani Soto, fonoaudiologa "
+  },
+  {
+    "id": "fe725c86-fc6a-4f07-891e-e40cae899b79",
+    "date": "2026-02-21T03:00:00.000Z",
+    "amount": 5000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: etiquetas escolares  - estefani fonoaudiologa "
+  },
+  {
+    "id": "e3793093-54ff-482b-a462-55afe623f763",
+    "date": "2026-02-26T03:00:00.000Z",
+    "amount": 6000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: etiqueta escolar  - mamá bruno farias "
+  },
+  {
+    "id": "f62608b0-b218-42fa-8684-c2fb025e3ce8",
+    "date": "2026-02-26T03:00:00.000Z",
+    "amount": 5000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Etiquetas  - Carito nobel "
+  },
+  {
+    "id": "d86ff1f4-11d4-4d92-9877-71382b45c2cc",
+    "date": "2026-03-01T03:00:00.000Z",
+    "amount": 10000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Etiqueta - Naty hernandez "
+  },
+  {
+    "id": "ce8aa1bf-2861-4197-80ea-0cf0be8cbc72",
+    "date": "2026-03-01T03:00:00.000Z",
+    "amount": 10000,
+    "type": "VENTA",
+    "category": "Agenda Personalizada",
+    "description": "Venta: Etiquetas spiderman - Naty hernandez"
+  }
+]
